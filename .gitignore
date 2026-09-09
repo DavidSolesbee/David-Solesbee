@@ -1,0 +1,22 @@
+# Database is shared separately — do not commit it
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Build / IDE
+bin/
+obj/
+node_modules/
+dist/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+.DS_Store
