@@ -1,0 +1,15 @@
+<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Solesbee Analytics">
+  <defs>
+    <linearGradient id="g" x1="0" y1="40" x2="40" y2="0">
+      <stop offset="0%" stop-color="#2C61D6"/>
+      <stop offset="100%" stop-color="#5A8BF7"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="40" height="40" rx="10" fill="url(#g)"/>
+  <rect x="9" y="23" width="4.5" height="8" rx="1.4" fill="#FFFFFF" fill-opacity="0.55"/>
+  <rect x="17.75" y="18" width="4.5" height="13" rx="1.4" fill="#FFFFFF" fill-opacity="0.8"/>
+  <rect x="26.5" y="12" width="4.5" height="19" rx="1.4" fill="#FFFFFF"/>
+  <path d="M11 21 L20 16 L28.75 10" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="28.75" cy="10" r="3" fill="#0A0F1C"/>
+  <circle cx="28.75" cy="10" r="1.6" fill="#FFFFFF"/>
+</svg>

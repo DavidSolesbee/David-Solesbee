@@ -68,6 +68,36 @@ const config: Config = {
           500: "#4E7A9B", // warm blue
           600: "#3E6480",
         },
+
+        /* ----------------------------------------------------------------
+         * Solesbee Analytics — public marketing surface (DARK enterprise).
+         * Additive tokens used ONLY by the public homepage / marketing pages.
+         * The authenticated app keeps the warm light theme above.
+         * ---------------------------------------------------------------- */
+        night: {
+          950: "#070B14", // deepest background
+          900: "#0A0F1C", // primary marketing background
+          850: "#0E1524", // alternating section
+          800: "#121B2E", // card surface
+          750: "#16203698", // translucent card
+          700: "#1C2740", // raised surface / border-strong
+          600: "#26324F", // hairline on dark
+        },
+        azure: {
+          50: "#EBF2FF",
+          100: "#D6E4FF",
+          200: "#AEC9FF",
+          300: "#7FA8FF",
+          400: "#5A8BF7",
+          500: "#3B78F0", // primary accent
+          600: "#2C61D6",
+          700: "#2450AE",
+        },
+        signal: {
+          up: "#3FD09B", // positive delta (calm emerald)
+          down: "#F2748C", // negative delta (soft rose)
+          warn: "#F0B454", // attention (amber)
+        },
       },
       fontFamily: {
         sans: [
@@ -115,6 +145,25 @@ const config: Config = {
       },
       transitionTimingFunction: {
         calm: "cubic-bezier(0.22, 0.61, 0.36, 1)",
+      },
+      keyframes: {
+        "fade-up": {
+          "0%": { opacity: "0", transform: "translateY(16px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "fade-in": {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        float: {
+          "0%,100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-8px)" },
+        },
+      },
+      animation: {
+        "fade-up": "fade-up 0.7s cubic-bezier(0.22,0.61,0.36,1) both",
+        "fade-in": "fade-in 0.8s ease-out both",
+        float: "float 6s ease-in-out infinite",
       },
     },
   },
