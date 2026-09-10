@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-canvas text-ink;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Calm, quiet focus ring in the sage family */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid theme("colors.sage.500");
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: theme("colors.sage.100");
+    color: theme("colors.ink");
+  }
+}
+
+@layer utilities {
+  /* Subtle skeleton shimmer for loading states */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      theme("colors.surface-sunken") 25%,
+      theme("colors.line") 37%,
+      theme("colors.surface-sunken") 63%
+    );
+    background-size: 400% 100%;
+    animation: perseus-shimmer 1.4s ease-in-out infinite;
+  }
+
+  @keyframes perseus-shimmer {
+    0% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0 50%;
+    }
+  }
+}
