@@ -1,5 +1,6 @@
 import * as React from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { Container, Eyebrow, SectionHeading, Section } from "./primitives";
 import { Reveal } from "./Reveal";
 
@@ -35,15 +36,15 @@ export function FounderStory() {
                 </span>
               </p>
             </div>
-            <a
-              href="#request-demo"
+            <Link
+              href="/about"
               className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-azure-300 hover:text-azure-200"
             >
               Read Our Story
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M4 10h11M11 5l5 5-5 5" />
               </svg>
-            </a>
+            </Link>
           </Reveal>
 
           <Reveal delay={120} className="order-1 lg:order-2">
