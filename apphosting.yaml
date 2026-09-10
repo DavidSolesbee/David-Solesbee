@@ -1,0 +1,28 @@
+# Firebase App Hosting configuration — Perseus Equipment Intelligence.
+#
+# App Hosting is Firebase's product for server-rendered Next.js. This file makes
+# the project Firebase-ready. NOT deployed yet (per project decision).
+#
+# IMPORTANT architecture note (to resolve before first deploy):
+#   - Perseus currently uses Node's built-in `node:sqlite` against LOCAL files:
+#       * a large READ-ONLY dealership database, and
+#       * a writable app store at data/perseus_app.db.
+#     App Hosting runs on Cloud Run with an EPHEMERAL filesystem, so the app
+#     store will not persist and the large read-only DB cannot simply live on
+#     local disk across instances. Before deploying we must move the app store
+#     to a managed database (e.g. Cloud SQL / Firestore) and decide how the
+#     dealership data is served (Cloud SQL copy, or a read replica). All access
+#     already flows through getAppDb()/getDealershipDb(), so this swap is
+#     contained to the db layer.
+#   - `node:sqlite` requires Node 24+. Confirm the App Hosting runtime supports
+#     the pinned Node version (see package.json "engines") before deploying.
+
+runConfig:
+  minInstances: 0
+  maxInstances: 2
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+# Environment variables / secrets are added here when we wire production config.
+env: []
