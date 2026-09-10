@@ -20,3 +20,15 @@ dist/
 *.suo
 Thumbs.db
 .DS_Store
+
+# Next.js / Node build + runtime artifacts
+/.next/
+/out/
+/build
+next-env.d.ts
+*.tsbuildinfo
+
+# Perseus application store (generated at runtime)
+/data/
+*.db-shm
+*.db-wal
