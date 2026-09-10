@@ -60,14 +60,25 @@ export function AuthedShell({
         {/* Role-aware module nav (preview; modules build out in later milestones) */}
         <div className="border-t border-line/70 bg-surface-tinted/60">
           <div className="mx-auto flex max-w-content flex-wrap items-center gap-1 px-6 py-2">
-            {modules.map((m) => (
-              <span
-                key={m.perm}
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-ink-soft"
-              >
-                {m.label}
-              </span>
-            ))}
+            {modules.map((m) =>
+              m.perm === "module.overview" ? (
+                <Link
+                  key={m.perm}
+                  href="/app"
+                  className="rounded-md px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-sunken"
+                >
+                  {m.label}
+                </Link>
+              ) : (
+                <span
+                  key={m.perm}
+                  className="rounded-md px-3 py-1.5 text-sm font-medium text-ink-faint"
+                  title="Available in a later milestone"
+                >
+                  {m.label}
+                </span>
+              ),
+            )}
             {canAdmin && (
               <Link href="/app/admin" className="ml-auto">
                 <StatusBadge
