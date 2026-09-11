@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getActiveContext } from "@/lib/tenant/context";
 import { listUsers } from "@/lib/admin/service";
 import { ROLES, ACCOUNT_STATES } from "@/lib/auth/catalog";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -19,8 +21,10 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const actor = await getActiveContext();
+  if (!actor) redirect("/login");
   const sp = await searchParams;
-  const users = listUsers({
+  const users = listUsers(actor, {
     search: sp.search,
     status: sp.status,
     role: sp.role,

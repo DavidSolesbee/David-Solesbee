@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/authz";
+import { getActiveContext } from "@/lib/tenant/context";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
  * Demonstrates that authorization is enforced server-side (not via the UI).
  */
 export async function GET() {
-  const user = await getCurrentUser();
+  const user = await getActiveContext();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -24,6 +24,13 @@ export async function GET() {
     role: user.roleKey,
     department: user.department,
     location: user.locationName,
+    organization: {
+      id: user.activeOrganizationId,
+      name: user.activeOrganizationName,
+      slug: user.activeOrganizationSlug,
+      tenantId: user.activeTenantId,
+    },
+    availableOrganizations: user.availableOrganizationCount,
     scope: user.scope,
     permissions: [...user.permissions].sort(),
   });

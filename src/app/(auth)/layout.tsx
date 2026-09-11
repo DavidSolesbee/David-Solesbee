@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { PerseusMark } from "@/components/brand/PerseusLogo";
+import { AppBrand } from "@/components/brand/AppBrand";
 import { config } from "@/lib/config";
 
 /** Calm, centered layout for all unauthenticated (auth) screens. */
@@ -12,17 +11,9 @@ export default function AuthLayout({
     <div className="flex min-h-screen flex-col bg-canvas">
       <div className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-md">
-          <Link href="/" className="mb-8 flex flex-col items-center gap-3">
-            <PerseusMark size={48} />
-            <span className="text-center">
-              <span className="block text-lg font-semibold uppercase tracking-[0.22em] text-forest-600">
-                Perseus
-              </span>
-              <span className="block text-caption uppercase tracking-[0.28em] text-ink-faint">
-                Equipment Intelligence
-              </span>
-            </span>
-          </Link>
+          <div className="mb-8 flex justify-center">
+            <AppBrand href="/login" size={32} />
+          </div>
           {children}
         </div>
       </div>

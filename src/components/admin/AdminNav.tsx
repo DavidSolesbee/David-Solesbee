@@ -5,12 +5,25 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
 
 /** Sub-navigation for the Admin Console, with active-tab highlighting. */
-export function AdminNav({ pendingCount }: { pendingCount: number }) {
+export function AdminNav({
+  pendingCount,
+  platformAdmin = false,
+}: {
+  pendingCount: number;
+  platformAdmin?: boolean;
+}) {
   const pathname = usePathname();
   const tabs = [
     { href: "/app/admin", label: "Overview", exact: true },
+    ...(platformAdmin
+      ? [{ href: "/app/admin/organizations", label: "Organizations" }]
+      : []),
+    { href: "/app/admin/security", label: "Security" },
     { href: "/app/admin/requests", label: "Access Requests", badge: pendingCount },
     { href: "/app/admin/users", label: "Users" },
+    { href: "/app/admin/invitations", label: "Invitations" },
+    { href: "/app/admin/dashboards", label: "Dashboards" },
+    { href: "/app/admin/reports", label: "Reporting" },
     { href: "/app/admin/audit", label: "Audit Log" },
   ];
   return (

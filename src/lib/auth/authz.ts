@@ -1,6 +1,5 @@
 import "server-only";
 import { getAppDb } from "@/lib/db/app";
-import { getSessionFromCookie } from "@/lib/auth/session";
 import { PerseusError } from "@/lib/errors";
 import type { AccountState } from "@/lib/auth/catalog";
 
@@ -54,9 +53,46 @@ interface UserRow {
   location_name: string | null;
   dealership: string | null;
   mfa_enabled: number;
+  role_id: number | null;
   role_key: string | null;
   role_name: string | null;
   hierarchy_level: number | null;
+}
+
+/**
+ * Effective permission keys for a given role, adjusted by this user's
+ * individual grant/revoke overrides. Shared by the global-role resolver
+ * (`loadUserById`) and the per-organization tenant-context resolver so the
+ * override semantics are identical everywhere.
+ */
+export function effectivePermissions(
+  roleId: number | null,
+  userId: number,
+): Set<string> {
+  const db = getAppDb();
+  const base = roleId
+    ? (db
+        .prepare(
+          `SELECT p.key FROM role_permissions rp
+           JOIN permissions p ON p.id = rp.permission_id
+           WHERE rp.role_id = ?`,
+        )
+        .all(roleId) as { key: string }[])
+    : [];
+  const perms = new Set(base.map((b) => b.key));
+
+  const overrides = db
+    .prepare(
+      `SELECT p.key, o.granted FROM user_permission_overrides o
+       JOIN permissions p ON p.id = o.permission_id
+       WHERE o.user_id = ?`,
+    )
+    .all(userId) as { key: string; granted: number }[];
+  for (const o of overrides) {
+    if (o.granted === 1) perms.add(o.key);
+    else perms.delete(o.key);
+  }
+  return perms;
 }
 
 export function loadUserById(userId: number): AuthUser | null {
@@ -65,38 +101,14 @@ export function loadUserById(userId: number): AuthUser | null {
     .prepare(
       `SELECT u.id, u.first_name, u.last_name, u.email, u.status, u.department,
               u.job_title, u.location_id, u.location_name, u.dealership, u.mfa_enabled,
-              r.key AS role_key, r.name AS role_name, r.hierarchy_level
+              u.role_id, r.key AS role_key, r.name AS role_name, r.hierarchy_level
        FROM users u LEFT JOIN roles r ON r.id = u.role_id
        WHERE u.id = ?`,
     )
     .get(userId) as UserRow | undefined;
   if (!row) return null;
 
-  // Base role permissions
-  const base = row.role_key
-    ? (db
-        .prepare(
-          `SELECT p.key FROM role_permissions rp
-           JOIN roles r ON r.id = rp.role_id
-           JOIN permissions p ON p.id = rp.permission_id
-           WHERE r.key = ?`,
-        )
-        .all(row.role_key) as { key: string }[])
-    : [];
-  const perms = new Set(base.map((b) => b.key));
-
-  // Individual overrides
-  const overrides = db
-    .prepare(
-      `SELECT p.key, o.granted FROM user_permission_overrides o
-       JOIN permissions p ON p.id = o.permission_id
-       WHERE o.user_id = ?`,
-    )
-    .all(row.id) as { key: string; granted: number }[];
-  for (const o of overrides) {
-    if (o.granted === 1) perms.add(o.key);
-    else perms.delete(o.key);
-  }
+  const perms = effectivePermissions(row.role_id ?? null, row.id);
 
   const allLocations = perms.has("data.cross_location");
   const allDepartments = perms.has("data.cross_department");
@@ -128,6 +140,7 @@ export function loadUserById(userId: number): AuthUser | null {
 
 /** Authenticate the current request. Returns the user or null (no valid session). */
 export async function getCurrentUser(): Promise<AuthUser | null> {
+  const { getSessionFromCookie } = await import("@/lib/auth/session");
   const session = await getSessionFromCookie();
   if (!session) return null;
   return loadUserById(session.user_id);
@@ -135,6 +148,16 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 
 /** Require an authenticated, ACTIVE user with app access. Throws otherwise. */
 export async function requireActiveUser(): Promise<AuthUser> {
+  // Prefer the tenant-scoped context (membership role for the active org).
+  const { getActiveContext } = await import("@/lib/tenant/context");
+  const ctx = await getActiveContext();
+  if (ctx) {
+    if (ctx.status !== "active")
+      throw new PerseusError("FORBIDDEN", `Account is ${ctx.status}.`);
+    if (!ctx.permissions.has("app.access"))
+      throw new PerseusError("FORBIDDEN", "No application access.");
+    return ctx;
+  }
   const user = await getCurrentUser();
   if (!user) throw new PerseusError("UNAUTHORIZED", "Not signed in.");
   if (user.status !== "active")
@@ -161,7 +184,14 @@ export async function requirePermission(key: string): Promise<AuthUser> {
  * additionally require `feature.manage_users` — enforced in the admin service.
  */
 export async function requireAdmin(): Promise<AuthUser> {
-  return requirePermission("app.admin");
+  const { getActiveContext } = await import("@/lib/tenant/context");
+  const ctx = await getActiveContext();
+  if (!ctx) throw new PerseusError("UNAUTHORIZED", "Not signed in.");
+  if (ctx.status !== "active")
+    throw new PerseusError("FORBIDDEN", `Account is ${ctx.status}.`);
+  if (!ctx.permissions.has("app.admin"))
+    throw new PerseusError("FORBIDDEN", "Missing permission: app.admin");
+  return ctx;
 }
 
 /** Human-readable reason a non-active account cannot enter, for UI messaging. */

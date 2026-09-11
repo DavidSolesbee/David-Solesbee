@@ -54,7 +54,7 @@ function isServiceish(scope: AnalyticsScope): boolean {
 
 export function getExecutiveDashboard(user: AuthUser): ExecutiveDashboard {
   const scope = resolveScope(user);
-  const asOf = q.getDataAsOf() ?? config.dataAsOfFallback;
+  const asOf = q.getDataAsOf(scope) ?? config.dataAsOfFallback;
   const kpis: Kpi[] = [];
 
   // Revenue (gated)
@@ -99,7 +99,7 @@ export function getExecutiveDashboard(user: AuthUser): ExecutiveDashboard {
 
   // Parts profitability (gated by margin)
   if (scope.canViewMargin && isPartsish(scope)) {
-    const p = q.getPartsProfit();
+    const p = q.getPartsProfit(scope);
     kpis.push({
       key: "parts_margin",
       label: "Parts Margin (est.)",
@@ -121,7 +121,7 @@ export function getExecutiveDashboard(user: AuthUser): ExecutiveDashboard {
 
   // Inventory (Sales-oriented)
   if (scope.canViewRevenue && isSalesish(scope)) {
-    const inv = q.getInventorySnapshot();
+    const inv = q.getInventorySnapshot(scope);
     kpis.push({
       key: "inv_retail",
       label: "Inventory Retail Value",
@@ -143,7 +143,7 @@ export function getExecutiveDashboard(user: AuthUser): ExecutiveDashboard {
 
   // Service (Service-oriented)
   if (isServiceish(scope)) {
-    const svc = q.getServiceStats(scope.canViewTechnician);
+    const svc = q.getServiceStats(scope, scope.canViewTechnician);
     kpis.push({
       key: "open_wo",
       label: "Open Work Orders",
@@ -175,7 +175,7 @@ export function getExecutiveDashboard(user: AuthUser): ExecutiveDashboard {
     revenueByYear: scope.canViewRevenue ? q.getScopedRevenueByYear(scope) : [],
     revenueByDepartment:
       scope.canViewRevenue && scope.allDepartments
-        ? q.getRevenueByDepartment()
+        ? q.getRevenueByDepartment(scope)
         : null,
     topCustomers: scope.canViewRevenue
       ? q.getTopCustomers(scope, scope.canViewContacts, 8)

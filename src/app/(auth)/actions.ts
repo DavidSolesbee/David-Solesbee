@@ -4,9 +4,19 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   login,
+  completeAuthenticatedLogin,
   submitAccessRequest,
   requestPasswordReset,
 } from "@/lib/auth/service";
+import { switchActiveOrganization } from "@/lib/tenant/context";
+import {
+  confirmMfaEnrollment,
+  consumeMfaChallenge,
+  getMfaChallengeUserId,
+  verifyMfaCode,
+} from "@/lib/auth/mfa";
+import { acceptInvitation } from "@/lib/admin/invitations";
+import { getAppDb } from "@/lib/db/app";
 
 /** Shared form-state shape for useActionState. */
 export interface FormState {
@@ -37,7 +47,68 @@ export async function loginAction(
   if (!result.ok) {
     return { error: result.message };
   }
-  redirect("/app");
+  if (result.mfaRequired) {
+    redirect(result.enrolled ? "/mfa" : "/mfa?enroll=1");
+  }
+  redirect(result.organizationCount > 1 ? "/select-organization" : "/app");
+}
+
+export async function verifyMfaAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const userId = await getMfaChallengeUserId();
+  if (!userId) return { error: "Your verification session expired. Sign in again." };
+  const code = String(formData.get("code") ?? "");
+  if (!verifyMfaCode(userId, code)) {
+    return { error: "That code is not valid." };
+  }
+  const consumed = await consumeMfaChallenge();
+  if (!consumed) return { error: "Your verification session expired. Sign in again." };
+  const row = getAppDb()
+    .prepare("SELECT email, dealership FROM users WHERE id = ?")
+    .get(userId) as { email: string; dealership: string | null };
+  const ctx = await requestContext();
+  const done = await completeAuthenticatedLogin(userId, row.email, row.dealership, ctx, "passed");
+  redirect(done.organizationCount > 1 ? "/select-organization" : "/app");
+}
+
+export async function enrollMfaDuringLoginAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const userId = await getMfaChallengeUserId();
+  if (!userId) return { error: "Your verification session expired. Sign in again." };
+  try {
+    confirmMfaEnrollment(userId, String(formData.get("code") ?? ""));
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Could not verify that code." };
+  }
+  const consumed = await consumeMfaChallenge();
+  if (!consumed) return { error: "Your verification session expired. Sign in again." };
+  const row = getAppDb()
+    .prepare("SELECT email, dealership FROM users WHERE id = ?")
+    .get(userId) as { email: string; dealership: string | null };
+  const ctx = await requestContext();
+  const done = await completeAuthenticatedLogin(userId, row.email, row.dealership, ctx, "enrolled");
+  redirect(done.organizationCount > 1 ? "/select-organization" : "/app");
+}
+
+export async function acceptInviteAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const token = String(formData.get("token") ?? "");
+  try {
+    acceptInvitation(token, {
+      firstName: String(formData.get("firstName") ?? ""),
+      lastName: String(formData.get("lastName") ?? ""),
+      password: String(formData.get("password") ?? ""),
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "This invitation could not be accepted." };
+  }
+  return { ok: true, message: "Invitation accepted. Sign in to continue." };
 }
 
 export async function requestAccessAction(
@@ -61,6 +132,21 @@ export async function requestAccessAction(
     message:
       "Your request has been submitted for review. Access will become available after approval.",
   };
+}
+
+export async function selectOrganizationAction(
+  formData: FormData,
+): Promise<void> {
+  const organizationId = Number(formData.get("organizationId"));
+  if (!Number.isFinite(organizationId)) {
+    redirect("/select-organization?error=1");
+  }
+  const result = await switchActiveOrganization(organizationId);
+  if (!result.ok) {
+    if (result.reason === "unauthenticated") redirect("/login");
+    redirect("/select-organization?error=1");
+  }
+  redirect("/app");
 }
 
 export async function forgotPasswordAction(

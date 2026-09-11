@@ -48,6 +48,24 @@ export function LoginForm() {
         {pending ? "Signing in…" : "Sign In"}
       </Button>
 
+      <div className="relative py-1">
+        <div className="absolute inset-0 flex items-center" aria-hidden>
+          <div className="w-full border-t border-line" />
+        </div>
+        <div className="relative flex justify-center">
+          <span className="bg-surface px-3 text-caption uppercase tracking-wide text-ink-faint">
+            or
+          </span>
+        </div>
+      </div>
+
+      <Button type="button" variant="secondary" size="lg" className="w-full" disabled>
+        Sign in with SSO
+      </Button>
+      <p className="text-center text-caption text-ink-faint">
+        Single sign-on is configured per organization. Coming soon.
+      </p>
+
       <div className="flex items-center justify-between pt-1 text-sm">
         <Link href="/forgot-password" className="text-ink-soft hover:text-ink">
           Forgot password?

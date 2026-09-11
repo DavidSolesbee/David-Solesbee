@@ -1,10 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/authz";
 import { setFlash } from "@/lib/admin/flash";
 import { toPerseusError } from "@/lib/errors";
 import * as admin from "@/lib/admin/service";
+import * as invitations from "@/lib/admin/invitations";
+import { updateOrgAuthSettings } from "@/lib/tenant/orgAuth";
 import type { AccountState } from "@/lib/auth/catalog";
 
 /** Wrap a governance mutation with admin auth + uniform error flashing. */
@@ -109,6 +112,35 @@ export async function resetPasswordAction(formData: FormData): Promise<void> {
   revalidatePath(`/app/admin/users/${userId}`);
 }
 
+export async function setPasswordAction(formData: FormData): Promise<void> {
+  const userId = Number(formData.get("userId"));
+  await run(async () => {
+    const actor = await requireAdmin();
+    const password = String(formData.get("password") ?? "");
+    const confirm = String(formData.get("confirm") ?? "");
+    if (password !== confirm) {
+      throw new Error("Password and confirmation do not match.");
+    }
+    admin.setPassword(actor, userId, password);
+    await setFlash({ kind: "success", message: "Password updated. The user was signed out." });
+  });
+  revalidatePath(`/app/admin/users/${userId}`);
+}
+
+export async function deleteUserAction(formData: FormData): Promise<void> {
+  const userId = Number(formData.get("userId"));
+  try {
+    const actor = await requireAdmin();
+    admin.deleteUser(actor, userId);
+    await setFlash({ kind: "success", message: "User removed." });
+  } catch (e) {
+    await setFlash({ kind: "error", message: toPerseusError(e).message });
+    revalidatePath(`/app/admin/users/${userId}`);
+    return;
+  }
+  redirect("/app/admin/users");
+}
+
 export async function forceLogoutAction(formData: FormData): Promise<void> {
   const userId = Number(formData.get("userId"));
   await run(async () => {
@@ -117,6 +149,45 @@ export async function forceLogoutAction(formData: FormData): Promise<void> {
     await setFlash({ kind: "success", message: `Ended ${n} active session(s).` });
   });
   revalidatePath(`/app/admin/users/${userId}`);
+}
+
+export async function inviteUserAction(formData: FormData): Promise<void> {
+  await run(async () => {
+    const actor = await requireAdmin();
+    const { token } = invitations.createInvitation(
+      actor,
+      String(formData.get("email") ?? ""),
+      String(formData.get("roleKey") ?? ""),
+    );
+    await setFlash({
+      kind: "secret",
+      message: `Invitation created. Share this link: /invite/${token}`,
+    });
+  });
+  revalidatePath("/app/admin/invitations");
+}
+
+export async function revokeInviteAction(formData: FormData): Promise<void> {
+  await run(async () => {
+    const actor = await requireAdmin();
+    invitations.revokeInvitation(actor, Number(formData.get("invitationId")));
+    await setFlash({ kind: "success", message: "Invitation revoked." });
+  });
+  revalidatePath("/app/admin/invitations");
+}
+
+export async function updateOrgAuthAction(formData: FormData): Promise<void> {
+  await run(async () => {
+    const actor = await requireAdmin();
+    const organizationId = Number(formData.get("organizationId"));
+    updateOrgAuthSettings(actor, organizationId, {
+      requireMfa: formData.get("requireMfa") === "1",
+      ssoEnabled: formData.get("ssoEnabled") === "1",
+    });
+    await setFlash({ kind: "success", message: "Organization auth settings updated." });
+  });
+  revalidatePath("/app/admin/organizations");
+  revalidatePath("/app/admin/invitations");
 }
 
 export async function unlockAction(formData: FormData): Promise<void> {

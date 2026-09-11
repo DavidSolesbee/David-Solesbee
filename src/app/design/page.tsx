@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/shell/AppShell";
 import { PerseusMark, PerseusLogo } from "@/components/brand/PerseusLogo";
+import { SolesbeeLogo, SolesbeeMark } from "@/components/brand/SolesbeeLogo";
 import {
   Card,
   CardContent,
@@ -39,15 +40,15 @@ function Section({
 }
 
 const swatches: Array<{ name: string; className: string; hex: string }> = [
-  { name: "Canvas", className: "bg-canvas border border-line", hex: "#F7F5F0" },
+  { name: "Canvas", className: "bg-canvas border border-line", hex: "#F4F6F9" },
   { name: "Surface", className: "bg-surface border border-line", hex: "#FFFFFF" },
-  { name: "Ink", className: "bg-ink", hex: "#2B2A28" },
-  { name: "Ink Soft", className: "bg-ink-soft", hex: "#6B6863" },
-  { name: "Sage", className: "bg-sage-500", hex: "#7C9A73" },
-  { name: "Forest", className: "bg-forest-500", hex: "#3F6B4E" },
+  { name: "Ink / Navy", className: "bg-ink", hex: "#0B1F44" },
+  { name: "Ink Soft", className: "bg-ink-soft", hex: "#5B6578" },
+  { name: "Electric Blue", className: "bg-sage-500", hex: "#1E6BFF" },
+  { name: "Navy", className: "bg-forest-500", hex: "#0B1F44" },
   { name: "Amber", className: "bg-amber-500", hex: "#C98A2B" },
   { name: "Terracotta", className: "bg-terracotta-500", hex: "#C0684A" },
-  { name: "Warm Blue", className: "bg-warm-blue-500", hex: "#4E7A9B" },
+  { name: "Silver Blue", className: "bg-warm-blue-500", hex: "#4E7A9B" },
 ];
 
 export default function DesignPage() {
@@ -60,8 +61,8 @@ export default function DesignPage() {
             Perseus Design Reference
           </h1>
           <p className="mt-2 max-w-2xl text-ink-soft">
-            Warm, minimal, spacious, premium. A calm foundation for every screen
-            in the platform.
+            Cool, minimal, spacious, premium. Navy, electric blue, and silver
+            from the Solesbee Analytics lockup.
           </p>
         </header>
 
@@ -69,8 +70,16 @@ export default function DesignPage() {
           <Card>
             <CardContent className="flex flex-wrap items-center gap-10">
               <div className="flex flex-col items-center gap-3">
+                <SolesbeeLogo size={40} tone="light" />
+                <span className="text-caption text-ink-faint">Solesbee lockup</span>
+              </div>
+              <div className="flex flex-col items-center gap-3">
+                <SolesbeeMark size={48} />
+                <span className="text-caption text-ink-faint">Solesbee mark</span>
+              </div>
+              <div className="flex flex-col items-center gap-3">
                 <PerseusLogo size={40} />
-                <span className="text-caption text-ink-faint">Primary logo</span>
+                <span className="text-caption text-ink-faint">Perseus lockup</span>
               </div>
               <div className="flex flex-col items-center gap-3">
                 <PerseusMark size={48} />
@@ -90,7 +99,7 @@ export default function DesignPage() {
           </Card>
         </Section>
 
-        <Section title="Color" description="Warm neutrals with restrained accents. No neon, no rainbow.">
+        <Section title="Color" description="Cool neutrals with navy and electric blue. No neon, no rainbow.">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
             {swatches.map((s) => (
               <div key={s.name}>

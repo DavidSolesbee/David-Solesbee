@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { getActiveContext } from "@/lib/tenant/context";
 import { listAudit } from "@/lib/admin/service";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Table, THead, TH, TBody, TR, TD } from "@/components/ui/Table";
@@ -9,8 +11,10 @@ function fmt(iso: string): string {
   return new Date(iso.replace(" ", "T") + "Z").toLocaleString();
 }
 
-export default function AuditPage() {
-  const rows = listAudit(300);
+export default async function AuditPage() {
+  const actor = await getActiveContext();
+  if (!actor) redirect("/login");
+  const rows = listAudit(actor, 300);
   return (
     <Card>
       <CardContent>

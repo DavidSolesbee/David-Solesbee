@@ -1,25 +1,20 @@
 import * as React from "react";
+import Image from "next/image";
 import { clsx } from "clsx";
 
 /**
- * Solesbee Analytics — brand marks.
+ * Solesbee Analytics — official mark.
  *
- * A data-centric identity: an abstract mark built from ascending data columns
- * and a connected trend path with a node — reading as analytical momentum and,
- * loosely, an "S/A". No mountains, no landscape imagery. Crisp at favicon size.
- *
- * Exports:
- *   - <SolesbeeMark />  icon only (square, works as favicon / app icon / avatar)
- *   - <SolesbeeLogo />  icon + "Solesbee Analytics" wordmark
+ * The S-bar icon follows the provided lockup: electric-blue top ribbon, navy
+ * base, silver and blue data bars. The full PNG is used on light surfaces;
+ * dark marketing surfaces keep the color mark + inverted type.
  */
 
 type Tone = "dark" | "light";
 
 const INK: Record<Tone, { word: string; sub: string }> = {
-  // On dark marketing surfaces
   dark: { word: "text-white", sub: "text-white/55" },
-  // On light surfaces
-  light: { word: "text-night-900", sub: "text-ink-soft" },
+  light: { word: "text-ink", sub: "text-ink-faint" },
 };
 
 export interface SolesbeeMarkProps extends React.SVGProps<SVGSVGElement> {
@@ -27,54 +22,30 @@ export interface SolesbeeMarkProps extends React.SVGProps<SVGSVGElement> {
   title?: string;
 }
 
-/**
- * The mark. Three ascending columns + a connecting analytical path with an
- * accent node. Uses a fixed azure/white gradient so it stays recognizable
- * anywhere (favicon, sidebar, avatar).
- */
 export function SolesbeeMark({
   size = 32,
   title = "Solesbee Analytics",
   className,
   ...rest
 }: SolesbeeMarkProps) {
-  const id = React.useId();
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 40 40"
+      viewBox="0 0 120 140"
       role="img"
       aria-label={title}
       className={clsx("shrink-0", className)}
       {...rest}
     >
       <title>{title}</title>
-      <defs>
-        <linearGradient id={`${id}-g`} x1="0" y1="40" x2="40" y2="0">
-          <stop offset="0%" stopColor="#2C61D6" />
-          <stop offset="100%" stopColor="#5A8BF7" />
-        </linearGradient>
-      </defs>
-      {/* Rounded container tile */}
-      <rect x="0" y="0" width="40" height="40" rx="10" fill={`url(#${id}-g)`} />
-      {/* Ascending data columns */}
-      <rect x="9" y="23" width="4.5" height="8" rx="1.4" fill="#FFFFFF" fillOpacity="0.55" />
-      <rect x="17.75" y="18" width="4.5" height="13" rx="1.4" fill="#FFFFFF" fillOpacity="0.8" />
-      <rect x="26.5" y="12" width="4.5" height="19" rx="1.4" fill="#FFFFFF" />
-      {/* Analytical trend path across the tops */}
-      <path
-        d="M11 21 L20 16 L28.75 10"
-        fill="none"
-        stroke="#FFFFFF"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Accent node */}
-      <circle cx="28.75" cy="10" r="3" fill="#0A0F1C" />
-      <circle cx="28.75" cy="10" r="3" fill="#FFFFFF" fillOpacity="0.12" />
-      <circle cx="28.75" cy="10" r="1.6" fill="#FFFFFF" />
+      <path d="M6 46 L78 6 L98 24 L26 64 Z" fill="#4D8AFF" />
+      <path d="M26 64 L98 24 L98 52 L26 92 Z" fill="#1E6BFF" />
+      <path d="M18 86 L38 74 L38 102 L18 114 Z" fill="#C5CCD6" />
+      <path d="M18 86 L38 74 L48 80 L28 92 Z" fill="#A8B2C1" />
+      <path d="M44 78 L64 66 L64 108 L44 120 Z" fill="#2B7BFF" />
+      <path d="M44 78 L64 66 L74 72 L54 84 Z" fill="#4D8AFF" />
+      <path d="M70 64 L98 52 L98 96 L64 128 L16 156 L16 132 L54 108 L70 98 Z" fill="#0B1F44" />
     </svg>
   );
 }
@@ -92,6 +63,21 @@ export function SolesbeeLogo({
   showDescriptor = true,
   className,
 }: SolesbeeLogoProps) {
+  if (tone === "light") {
+    return (
+      <Image
+        src="/brand/solesbee-analytics.png"
+        alt="Solesbee Analytics"
+        width={Math.round(size * 4.2)}
+        height={size}
+        className={clsx("w-auto object-contain object-left", className)}
+        style={{ height: size }}
+        priority
+        unoptimized
+      />
+    );
+  }
+
   const c = INK[tone];
   return (
     <span className={clsx("inline-flex items-center gap-2.5", className)}>
@@ -105,10 +91,7 @@ export function SolesbeeLogo({
         </span>
         {showDescriptor && (
           <span
-            className={clsx(
-              "mt-0.5 font-medium uppercase tracking-[0.32em]",
-              c.sub,
-            )}
+            className={clsx("mt-0.5 font-medium uppercase tracking-[0.32em]", c.sub)}
             style={{ fontSize: size * 0.24 }}
           >
             Analytics

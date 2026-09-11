@@ -1,16 +1,16 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Perseus Equipment Intelligence — Design System tokens.
+ * Solesbee Analytics / Perseus — Design System tokens.
  *
- * Direction: warm, minimal, spacious, premium, calm, modern, highly readable.
- * Inspired by the restraint of modern Apple product design (not a copy).
+ * Direction: cool, minimal, spacious, premium, calm, modern, highly readable.
+ * Palette is taken from the official Solesbee mark: navy, electric blue, silver.
  *
- * - Warm white / ivory backgrounds
+ * - Cool off-white backgrounds
  * - White or softly tinted surfaces
- * - Warm charcoal text, soft gray secondary text
+ * - Navy ink, silver secondary text
  * - Subtle shadows, muted borders, generous whitespace
- * - Accents: sage, forest green, warm amber, soft terracotta, warm blue
+ * - Accents: electric blue, navy, amber, terracotta
  * - No neon, no heavy gradients, no rainbow charts
  */
 const config: Config = {
@@ -22,33 +22,33 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Surfaces & background (warm ivory family)
-        canvas: "#F7F5F0", // page background — warm white / ivory
-        surface: "#FFFFFF", // primary card surface
-        "surface-tinted": "#FBFAF6", // softly tinted surface
-        "surface-sunken": "#F1EEE7", // sunken wells / table headers
+        // Surfaces & background (cool white family)
+        canvas: "#F4F6F9",
+        surface: "#FFFFFF",
+        "surface-tinted": "#F7F9FC",
+        "surface-sunken": "#EEF1F6",
         // Text
-        ink: "#2B2A28", // warm charcoal (primary text)
-        "ink-soft": "#6B6863", // soft gray (secondary text)
-        "ink-faint": "#9A968E", // faint gray (tertiary / captions)
+        ink: "#0B1F44",
+        "ink-soft": "#5B6578",
+        "ink-faint": "#8B95A5",
         // Borders
-        line: "#E7E3DA", // muted border
-        "line-strong": "#D8D3C7",
-        // Accents
+        line: "#E2E6EE",
+        "line-strong": "#C9D0DC",
+        // Accents — token names kept so existing classes pick up the new brand
         sage: {
-          50: "#F1F5F0",
-          100: "#DFE8DC",
-          300: "#A9C0A0",
-          500: "#7C9A73", // primary sage
-          600: "#657F5D",
-          700: "#4F6549",
+          50: "#EBF3FF",
+          100: "#D4E4FF",
+          300: "#8FB6FF",
+          500: "#1E6BFF",
+          600: "#1554D6",
+          700: "#0F3FAD",
         },
         forest: {
-          50: "#EAF0EC",
-          300: "#7FA087",
-          500: "#3F6B4E", // forest green (primary brand accent)
-          600: "#335840",
-          700: "#274531",
+          50: "#E8EEF8",
+          300: "#4A6FA5",
+          500: "#0B1F44",
+          600: "#081733",
+          700: "#051022",
         },
         amber: {
           50: "#FBF3E6",
@@ -84,14 +84,14 @@ const config: Config = {
           600: "#26324F", // hairline on dark
         },
         azure: {
-          50: "#EBF2FF",
-          100: "#D6E4FF",
-          200: "#AEC9FF",
-          300: "#7FA8FF",
-          400: "#5A8BF7",
-          500: "#3B78F0", // primary accent
-          600: "#2C61D6",
-          700: "#2450AE",
+          50: "#EBF3FF",
+          100: "#D4E4FF",
+          200: "#A8C6FF",
+          300: "#7EB0FF",
+          400: "#4D8AFF",
+          500: "#1E6BFF",
+          600: "#1554D6",
+          700: "#0F3FAD",
         },
         signal: {
           up: "#3FD09B", // positive delta (calm emerald)
@@ -131,10 +131,10 @@ const config: Config = {
       },
       boxShadow: {
         // Subtle, warm-tinted elevation
-        card: "0 1px 2px rgba(43, 42, 40, 0.04), 0 4px 16px rgba(43, 42, 40, 0.05)",
+        card: "0 1px 2px rgba(11, 31, 68, 0.04), 0 4px 16px rgba(11, 31, 68, 0.06)",
         "card-hover":
-          "0 2px 4px rgba(43, 42, 40, 0.06), 0 10px 28px rgba(43, 42, 40, 0.08)",
-        subtle: "0 1px 2px rgba(43, 42, 40, 0.05)",
+          "0 2px 4px rgba(11, 31, 68, 0.06), 0 10px 28px rgba(11, 31, 68, 0.08)",
+        subtle: "0 1px 2px rgba(11, 31, 68, 0.06)",
       },
       spacing: {
         18: "4.5rem",

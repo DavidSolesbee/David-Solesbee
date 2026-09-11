@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth/authz";
+import { getActiveContext } from "@/lib/tenant/context";
 import { countPendingRequests } from "@/lib/admin/service";
 import { readFlash } from "@/lib/admin/flash";
 import { AdminNav } from "@/components/admin/AdminNav";
@@ -17,11 +17,11 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getCurrentUser();
+  const user = await getActiveContext();
   if (!user || user.status !== "active") redirect("/login");
   if (!user.permissions.has("app.admin")) redirect("/app");
 
-  const pending = countPendingRequests();
+  const pending = countPendingRequests(user);
   const flash = await readFlash();
 
   return (
@@ -31,15 +31,15 @@ export default async function AdminLayout({
           Admin Console
         </div>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-ink">
-          User Governance
+          Administration
         </h1>
         <p className="mt-1 text-ink-soft">
-          Manage access, roles, permissions, and account lifecycle. Every action
-          is enforced server-side and recorded in the audit log.
+          Access, dashboards, automated reporting, and audit. Every action is
+          enforced server-side — security always overrides configuration.
         </p>
       </div>
 
-      <AdminNav pendingCount={pending} />
+      <AdminNav pendingCount={pending} platformAdmin={user.isPlatformAdmin} />
       <FlashBanner flash={flash} />
 
       <div>{children}</div>

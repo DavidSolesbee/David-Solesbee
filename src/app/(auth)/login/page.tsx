@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/Card";
 import { getCurrentUser } from "@/lib/auth/authz";
+import { postAuthPath } from "@/lib/tenant/context";
 import { DEMO_PASSWORD } from "@/lib/auth/seed";
 import { LoginForm } from "./LoginForm";
 
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
-  if (user?.status === "active") redirect("/app");
+  if (user?.status === "active") redirect(await postAuthPath());
 
   return (
     <div className="space-y-4">

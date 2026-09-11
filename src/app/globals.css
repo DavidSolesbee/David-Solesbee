@@ -18,7 +18,7 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  /* Calm, quiet focus ring in the sage family */
+  /* Calm, quiet focus ring in the brand blue */
   :where(a, button, input, select, textarea, [tabindex]):focus-visible {
     outline: 2px solid theme("colors.sage.500");
     outline-offset: 2px;

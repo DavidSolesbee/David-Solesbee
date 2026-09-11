@@ -38,3 +38,9 @@ yarn-error.log*
 *.db
 *.sqlite
 *.sqlite3
+/runtime-data/
+
+# Nested snapshot / debug (not the app)
+/David-Solesbee/
+firebase-debug.log
+firebase-debug.*.log

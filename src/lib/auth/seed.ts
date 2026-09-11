@@ -71,8 +71,10 @@ export function seedAppStore(db: DatabaseSync): void {
     for (const pk of r.permissions) insRP.run(rid, permId(pk));
   }
 
-  if (usersExist) return; // users only seeded once
+  // Organizations & tenants (Auth v2, Phase A) — always seeded, idempotent.
+  seedOrganizations(db);
 
+  if (!usersExist) {
   // Shared demo password hash (reused across demo/seed accounts).
   const demo: PasswordRecord = hashPassword(DEMO_PASSWORD);
 
@@ -98,7 +100,7 @@ export function seedAppStore(db: DatabaseSync): void {
       u.jobTitle,
       1,
       "Main Location",
-      "Sioux City Equipment",
+      u.source === "dealership" ? "Sioux City Equipment" : "Perseus",
       u.status,
       u.source,
       activatedAt,
@@ -141,9 +143,15 @@ export function seedAppStore(db: DatabaseSync): void {
   insReq.run("Tom", "Becker", "tom.becker@siouxcity.example.com", "Sioux City Equipment", "Main Location", "Service", "Service Manager", "service_manager", "Managing the shop and need work-order visibility.");
 
   db.prepare(
-    `INSERT INTO meta (key, value) VALUES ('schema_version','2')
-     ON CONFLICT(key) DO UPDATE SET value='2', updated_at=datetime('now')`,
+    `INSERT INTO meta (key, value) VALUES ('schema_version','3')
+     ON CONFLICT(key) DO UPDATE SET value='3', updated_at=datetime('now')`,
   ).run();
+  } // end one-time user seed
+
+  // Organization memberships — always run, idempotent.
+  // Demo testers belong to Perseus (the platform test tenant). Dealership-
+  // imported staff belong to Sioux City Equipment (a client, not Perseus).
+  backfillMemberships(db);
 }
 
 /** Map dealership AppUser flags to a Perseus role + status, and seed them. */
@@ -206,4 +214,181 @@ function seedFromDealershipAppUsers(
 
     addUser({ first, last, email, roleKey, department, jobTitle, status, source: "dealership" });
   }
+}
+
+/**
+ * Auth v2 organization/tenant seed.
+ *
+ * Perseus is the platform test tenant and the one bound to the operational
+ * database (`perseus_equipment_database`). Sioux City Equipment is a separate
+ * client organization — not the same as Perseus — and the other orgs are demo
+ * clients. All tenants currently reuse that one dataset so the selector/switcher
+ * can be exercised; membership still decides who may enter which org.
+ */
+interface OrgSeed {
+  tenantId: string;
+  name: string;
+  slug: string;
+  accountStatus: string;
+  subscriptionStatus: string;
+  domain: string;
+  location: string;
+  logo: string;
+  primary?: boolean;
+}
+
+/** Platform test tenant — owns the operational database. */
+export const PRIMARY_ORG_SLUG = "perseus";
+const SIOUX_CITY_SLUG = "sioux-city-equipment";
+const ORG_SEED: OrgSeed[] = [
+  { tenantId: "tenant_perseus_001", name: "Perseus", slug: PRIMARY_ORG_SLUG, accountStatus: "active", subscriptionStatus: "active", domain: "perseus.app", location: "United States", logo: "P", primary: true },
+  { tenantId: "tenant_scec_001", name: "Sioux City Equipment", slug: SIOUX_CITY_SLUG, accountStatus: "active", subscriptionStatus: "active", domain: "siouxcityequipment.com", location: "Sioux City, IA", logo: "SC" },
+  { tenantId: "tenant_abc_001", name: "ABC Marine", slug: "abc-marine", accountStatus: "active", subscriptionStatus: "active", domain: "abcmarine.com", location: "Corpus Christi, TX", logo: "AM" },
+  { tenantId: "tenant_mht_001", name: "Motor Homes of Texas", slug: "motor-homes-of-texas", accountStatus: "active", subscriptionStatus: "trial", domain: "motorhomesoftexas.com", location: "Fort Worth, TX", logo: "MH" },
+  { tenantId: "tenant_src_001", name: "Sea Ray Cincinnati", slug: "sea-ray-cincinnati", accountStatus: "active", subscriptionStatus: "active", domain: "searaycincinnati.com", location: "Cincinnati, OH", logo: "SR" },
+];
+
+/** Dataset ref every tenant currently maps to (single dealership DB). */
+const DEALERSHIP_DATASET_REF = "perseus_equipment_database";
+
+function seedOrganizations(db: DatabaseSync): void {
+  const insTenant = db.prepare(
+    `INSERT INTO tenants (tenant_id, data_source_kind, data_source_ref, status)
+     VALUES (?, 'dealership_sqlite', ?, 'active')
+     ON CONFLICT(tenant_id) DO UPDATE SET data_source_ref=excluded.data_source_ref`,
+  );
+  const insOrg = db.prepare(
+    `INSERT INTO organizations
+       (tenant_id, name, slug, account_status, subscription_status, primary_domain, location, logo_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(slug) DO UPDATE SET
+       tenant_id=excluded.tenant_id, name=excluded.name,
+       account_status=excluded.account_status, subscription_status=excluded.subscription_status,
+       primary_domain=excluded.primary_domain, location=excluded.location, logo_text=excluded.logo_text`,
+  );
+  const insAuth = db.prepare(
+    `INSERT INTO organization_auth_settings (organization_id)
+     SELECT id FROM organizations WHERE slug = ?
+     ON CONFLICT(organization_id) DO NOTHING`,
+  );
+  for (const o of ORG_SEED) {
+    insTenant.run(o.tenantId, DEALERSHIP_DATASET_REF);
+    insOrg.run(o.tenantId, o.name, o.slug, o.accountStatus, o.subscriptionStatus, o.domain, o.location, o.logo);
+    insAuth.run(o.slug);
+  }
+}
+
+/** Map an account status to a coarse membership status. */
+function membershipStatusFor(accountStatus: string): string {
+  if (accountStatus === "active") return "active";
+  if (accountStatus === "pending") return "invited";
+  return "suspended";
+}
+
+function backfillMemberships(db: DatabaseSync): void {
+  const perseus = db
+    .prepare("SELECT id FROM organizations WHERE slug=?")
+    .get(PRIMARY_ORG_SLUG) as { id: number } | undefined;
+  const siouxCity = db
+    .prepare("SELECT id FROM organizations WHERE slug=?")
+    .get(SIOUX_CITY_SLUG) as { id: number } | undefined;
+  if (!perseus) return;
+
+  const orgIdBySlug = (slug: string): number | null => {
+    const r = db.prepare("SELECT id FROM organizations WHERE slug=?").get(slug) as
+      | { id: number }
+      | undefined;
+    return r?.id ?? null;
+  };
+  const roleIdByKey = (key: string): number | null => {
+    const r = db.prepare("SELECT id FROM roles WHERE key=?").get(key) as
+      | { id: number }
+      | undefined;
+    return r?.id ?? null;
+  };
+
+  const insMember = db.prepare(
+    `INSERT INTO user_organization_memberships
+       (user_id, organization_id, role_id, status, is_primary)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, organization_id) DO UPDATE SET
+       role_id=excluded.role_id, status=excluded.status, is_primary=excluded.is_primary`,
+  );
+
+  const users = db.prepare(
+    "SELECT id, role_id, status, source, email FROM users",
+  ).all() as Array<{
+    id: number;
+    role_id: number | null;
+    status: string;
+    source: string | null;
+    email: string;
+  }>;
+
+  for (const u of users) {
+    const isDealershipStaff = u.source === "dealership";
+    if (isDealershipStaff && siouxCity) {
+      insMember.run(u.id, siouxCity.id, u.role_id, membershipStatusFor(u.status), 1);
+    } else {
+      insMember.run(u.id, perseus.id, u.role_id, membershipStatusFor(u.status), 1);
+    }
+  }
+
+  // Demo testers live on Perseus. They must not keep the old Sioux City
+  // default membership — that client is a different organization.
+  if (siouxCity) {
+    db.prepare(
+      `DELETE FROM user_organization_memberships
+        WHERE organization_id = ?
+          AND user_id IN (
+            SELECT id FROM users
+             WHERE source != 'dealership' AND email != 'owner@perseus.app'
+          )`,
+    ).run(siouxCity.id);
+  }
+
+  db.prepare("UPDATE user_organization_memberships SET is_primary = 0").run();
+  db.prepare(
+    `UPDATE user_organization_memberships SET is_primary = 1
+      WHERE organization_id = ?
+        AND user_id IN (SELECT id FROM users WHERE source != 'dealership')`,
+  ).run(perseus.id);
+  if (siouxCity) {
+    db.prepare(
+      `UPDATE user_organization_memberships SET is_primary = 1
+        WHERE organization_id = ?
+          AND user_id IN (SELECT id FROM users WHERE source = 'dealership')`,
+    ).run(siouxCity.id);
+  }
+
+  // owner@ is multi-org: Perseus (primary) plus client sites, each a different role.
+  const owner = db.prepare("SELECT id FROM users WHERE email=?").get("owner@perseus.app") as
+    | { id: number }
+    | undefined;
+  if (owner) {
+    if (siouxCity) insMember.run(owner.id, siouxCity.id, roleIdByKey("dealer_principal"), "active", 0);
+    const abc = orgIdBySlug("abc-marine");
+    const mht = orgIdBySlug("motor-homes-of-texas");
+    if (abc) insMember.run(owner.id, abc, roleIdByKey("general_manager"), "active", 0);
+    if (mht) insMember.run(owner.id, mht, roleIdByKey("operations_manager"), "active", 0);
+    db.prepare(
+      "UPDATE user_organization_memberships SET is_primary = 0 WHERE user_id = ?",
+    ).run(owner.id);
+    db.prepare(
+      "UPDATE user_organization_memberships SET is_primary = 1 WHERE user_id = ? AND organization_id = ?",
+    ).run(owner.id, perseus.id);
+  }
+
+  db.prepare(
+    `UPDATE users SET dealership = 'Perseus'
+      WHERE source != 'dealership' AND (dealership IS NULL OR dealership = 'Sioux City Equipment')`,
+  ).run();
+
+  // Rebind existing sessions so testers land in Perseus, not Sioux City.
+  db.prepare(
+    `UPDATE sessions
+        SET active_organization_id = ?, active_tenant_id = 'tenant_perseus_001'
+      WHERE user_id IN (SELECT id FROM users WHERE source != 'dealership')
+        AND revoked_at IS NULL`,
+  ).run(perseus.id);
 }

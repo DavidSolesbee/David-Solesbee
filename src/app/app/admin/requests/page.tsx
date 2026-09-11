@@ -1,4 +1,4 @@
-import { getCurrentUser } from "@/lib/auth/authz";
+import { getActiveContext } from "@/lib/tenant/context";
 import { listAccessRequests, assignableRoles } from "@/lib/admin/service";
 import {
   Card,
@@ -18,9 +18,9 @@ export const dynamic = "force-dynamic";
 const DEPARTMENTS = ["Sales", "Parts", "Service", "Operations"];
 
 export default async function RequestsPage() {
-  const actor = (await getCurrentUser())!;
+  const actor = (await getActiveContext())!;
   const roles = assignableRoles(actor);
-  const all = listAccessRequests();
+  const all = listAccessRequests(actor);
   const open = all.filter(
     (r) => r.status === "pending" || r.status === "more_info",
   );

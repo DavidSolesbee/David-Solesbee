@@ -1,33 +1,40 @@
 import * as React from "react";
 import Link from "next/link";
-import { PerseusLogo } from "@/components/brand/PerseusLogo";
+import { AppBrand } from "@/components/brand/AppBrand";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Button } from "@/components/ui/Button";
 import { logoutAction } from "@/app/app/actions";
-import type { AuthUser } from "@/lib/auth/authz";
+import type { AuthContext } from "@/lib/tenant/context";
+import type { OrgMembership } from "@/lib/tenant/organizations";
+import { ModuleNav } from "@/components/shell/ModuleNav";
+import { OrgSwitcher } from "@/components/shell/OrgSwitcher";
+import { ViewAsBanner } from "@/components/shell/ViewAsBanner";
 
 /**
  * Authenticated application shell. Role-aware navigation is derived from the
  * user's module permissions (modules the user is NOT authorized to see never
- * appear). Full module screens arrive in later milestones.
+ * appear). Each authorized module links to its analytics page.
  */
 
-const MODULE_NAV: Array<{ perm: string; label: string }> = [
-  { perm: "module.overview", label: "Overview" },
-  { perm: "module.customers", label: "Customers" },
-  { perm: "module.sales", label: "Sales" },
-  { perm: "module.parts", label: "Parts" },
-  { perm: "module.inventory", label: "Inventory" },
-  { perm: "module.service", label: "Service" },
-  { perm: "module.payments", label: "Payments" },
-  { perm: "module.ai_insights", label: "AI Insights" },
+const MODULE_NAV: Array<{ perm: string; label: string; href: string | null }> = [
+  { perm: "module.overview", label: "Overview", href: "/app" },
+  { perm: "module.customers", label: "Customers", href: "/app/customers" },
+  { perm: "module.sales", label: "Sales", href: "/app/sales" },
+  { perm: "module.parts", label: "Parts", href: "/app/parts" },
+  { perm: "module.inventory", label: "Inventory", href: "/app/inventory" },
+  { perm: "module.service", label: "Service", href: "/app/service" },
+  { perm: "module.payments", label: "Payments", href: "/app/payments" },
+  { perm: "module.accounting", label: "Accounting", href: "/app/accounting" },
+  { perm: "module.ai_insights", label: "Ask AI", href: "/app/ask" },
 ];
 
 export function AuthedShell({
   user,
+  organizations,
   children,
 }: {
-  user: AuthUser;
+  user: AuthContext;
+  organizations: OrgMembership[];
   children: React.ReactNode;
 }) {
   const modules = MODULE_NAV.filter((m) => user.permissions.has(m.perm));
@@ -35,16 +42,25 @@ export function AuthedShell({
 
   return (
     <div className="min-h-screen bg-canvas">
+      {user.isViewingAs && (
+        <ViewAsBanner organizationName={user.activeOrganizationName} />
+      )}
       <header className="sticky top-0 z-40 border-b border-line bg-canvas/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-content items-center justify-between px-6">
-          <Link href="/app">
-            <PerseusLogo size={26} />
-          </Link>
+          <div className="flex items-center gap-3">
+            <AppBrand href="/app" size={26} />
+            <OrgSwitcher
+              label={user.activeOrganizationName}
+              activeOrganizationId={user.activeOrganizationId}
+              organizations={organizations}
+              viewingAs={user.isViewingAs}
+            />
+          </div>
           <div className="flex items-center gap-4">
             <div className="hidden text-right sm:block">
-              <div className="text-sm font-medium text-ink">
+              <Link href="/app/account" className="text-sm font-medium text-ink hover:text-forest-700">
                 {user.firstName} {user.lastName}
-              </div>
+              </Link>
               <div className="text-caption text-ink-faint">
                 {user.roleName ?? "No role"}
                 {user.department ? ` · ${user.department}` : ""}
@@ -57,28 +73,18 @@ export function AuthedShell({
             </form>
           </div>
         </div>
-        {/* Role-aware module nav (preview; modules build out in later milestones) */}
+        {/* Role-aware module nav — each authorized module links to its page */}
         <div className="border-t border-line/70 bg-surface-tinted/60">
           <div className="mx-auto flex max-w-content flex-wrap items-center gap-1 px-6 py-2">
-            {modules.map((m) =>
-              m.perm === "module.overview" ? (
-                <Link
-                  key={m.perm}
-                  href="/app"
-                  className="rounded-md px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-surface-sunken"
-                >
-                  {m.label}
-                </Link>
-              ) : (
-                <span
-                  key={m.perm}
-                  className="rounded-md px-3 py-1.5 text-sm font-medium text-ink-faint"
-                  title="Available in a later milestone"
-                >
-                  {m.label}
-                </span>
-              ),
-            )}
+            <ModuleNav
+              links={[
+                ...modules.map((m) => ({ label: m.label, href: m.href })),
+                { label: "Dashboards", href: "/app/dashboards" },
+                ...(user.permissions.has("feature.export")
+                  ? [{ label: "Reports", href: "/app/reports" }]
+                  : []),
+              ]}
+            />
             {canAdmin && (
               <Link href="/app/admin" className="ml-auto">
                 <StatusBadge

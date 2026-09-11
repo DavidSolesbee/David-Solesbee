@@ -1,0 +1,21 @@
+{
+  "apphosting": [
+    {
+      "backendId": "perseus",
+      "rootDir": "./",
+      "ignore": [
+        "node_modules",
+        ".git",
+        ".next",
+        "David-Solesbee",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "data",
+        "runtime-data",
+        "*.db",
+        "*.sqlite",
+        "*.sqlite3"
+      ]
+    }
+  ]
+}

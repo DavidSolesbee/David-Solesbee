@@ -1,10 +1,13 @@
 import Link from "next/link";
-import { requireActiveUser } from "@/lib/auth/authz";
+import { redirect } from "next/navigation";
+import { getActiveContext } from "@/lib/tenant/context";
 import {
   getExecutiveDashboard,
   getRevenueDrilldown,
   type Kpi,
 } from "@/lib/analytics";
+import { perseusBriefing } from "@/lib/ai/service";
+import { BriefingCard } from "@/components/ai/BriefingCard";
 import {
   Card,
   CardContent,
@@ -43,8 +46,10 @@ export default async function ExecutiveDashboard({
 }: {
   searchParams: Promise<{ year?: string }>;
 }) {
-  const user = await requireActiveUser();
+  const user = await getActiveContext();
+  if (!user) redirect("/login");
   const dash = getExecutiveDashboard(user);
+  const briefing = perseusBriefing(user);
   const sp = await searchParams;
   const drillYear = sp.year;
   const drill = drillYear ? getRevenueDrilldown(user, drillYear) : null;
@@ -72,6 +77,9 @@ export default async function ExecutiveDashboard({
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink">
             Welcome, {user.firstName}.
           </h1>
+          <p className="mt-1 text-sm font-medium text-ink">
+            {user.activeOrganizationName}
+          </p>
           <p className="mt-1 text-ink-soft">
             {dash.scope.allDepartments
               ? "Dealership-wide performance across all departments."
@@ -85,6 +93,8 @@ export default async function ExecutiveDashboard({
           Your access
         </Link>
       </div>
+
+      {briefing && <BriefingCard narrative={briefing.narrative} />}
 
       {/* KPI grid */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

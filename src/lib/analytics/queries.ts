@@ -1,7 +1,38 @@
 import "server-only";
-import { query, queryScalar } from "@/lib/db/dealership";
+import { queryForTenant, queryScalarForTenant } from "@/lib/db/dealership";
 import { POSTED_STATUS_SQL, POSTED_DATE_SQL } from "@/lib/semantic/metrics";
 import { itemTypeClause, type AnalyticsScope } from "@/lib/analytics/scope";
+import { PerseusError } from "@/lib/errors";
+
+function accessOf(scope: AnalyticsScope) {
+  if (!scope.tenantId) {
+    throw new PerseusError(
+      "FORBIDDEN",
+      "Dealership data requires a validated tenant context.",
+    );
+  }
+  return {
+    userId: scope.userId,
+    tenantId: scope.tenantId,
+    platformViewAs: scope.platformViewAs,
+  };
+}
+
+function query<T = Record<string, unknown>>(
+  scope: AnalyticsScope,
+  sql: string,
+  params: unknown[] = [],
+): T[] {
+  return queryForTenant<T>(accessOf(scope), sql, params);
+}
+
+function queryScalar<T = number>(
+  scope: AnalyticsScope,
+  sql: string,
+  params: unknown[] = [],
+): T | undefined {
+  return queryScalarForTenant<T>(accessOf(scope), sql, params);
+}
 
 /**
  * Scoped analytics queries. Every function that can be scoped takes the
@@ -16,8 +47,9 @@ import { itemTypeClause, type AnalyticsScope } from "@/lib/analytics/scope";
  *     their ItemTypes, which is the accurate slice of their department.
  */
 
-export function getDataAsOf(): string | undefined {
+export function getDataAsOf(scope: AnalyticsScope): string | undefined {
   return queryScalar<string>(
+    scope,
     `SELECT MAX(${POSTED_DATE_SQL}) FROM InvoiceHeader h WHERE ${POSTED_STATUS_SQL}`,
   );
 }
@@ -27,6 +59,7 @@ export function getScopedRevenue(scope: AnalyticsScope): number {
   if (scope.allDepartments) {
     return (
       queryScalar<number>(
+        scope,
         `SELECT ROUND(SUM(h.TotalInvoice),2) FROM InvoiceHeader h WHERE ${POSTED_STATUS_SQL}`,
       ) ?? 0
     );
@@ -34,6 +67,7 @@ export function getScopedRevenue(scope: AnalyticsScope): number {
   const it = itemTypeClause(scope);
   return (
     queryScalar<number>(
+      scope,
       `SELECT ROUND(SUM(d.NetExt),2)
        FROM InvoiceDetail d JOIN InvoiceHeader h ON h.InvoiceDocId = d.InvoiceDocId
        WHERE ${POSTED_STATUS_SQL} AND ${it.sql}`,
@@ -47,6 +81,7 @@ export function getScopedInvoiceCount(scope: AnalyticsScope): number {
   if (scope.allDepartments) {
     return (
       queryScalar<number>(
+        scope,
         `SELECT COUNT(*) FROM InvoiceHeader h WHERE ${POSTED_STATUS_SQL}`,
       ) ?? 0
     );
@@ -54,6 +89,7 @@ export function getScopedInvoiceCount(scope: AnalyticsScope): number {
   const it = itemTypeClause(scope);
   return (
     queryScalar<number>(
+      scope,
       `SELECT COUNT(DISTINCT d.InvoiceDocId)
        FROM InvoiceDetail d JOIN InvoiceHeader h ON h.InvoiceDocId = d.InvoiceDocId
        WHERE ${POSTED_STATUS_SQL} AND ${it.sql}`,
@@ -70,6 +106,7 @@ export function getScopedActiveCustomers(
   if (scope.allDepartments) {
     return (
       queryScalar<number>(
+        scope,
         `SELECT COUNT(DISTINCT h.CustomerId) FROM InvoiceHeader h
          WHERE ${POSTED_STATUS_SQL} AND ${POSTED_DATE_SQL} >= date(substr(?,1,10), '-365 day')`,
         [asOf],
@@ -79,6 +116,7 @@ export function getScopedActiveCustomers(
   const it = itemTypeClause(scope);
   return (
     queryScalar<number>(
+      scope,
       `SELECT COUNT(DISTINCT h.CustomerId)
        FROM InvoiceDetail d JOIN InvoiceHeader h ON h.InvoiceDocId = d.InvoiceDocId
        WHERE ${POSTED_STATUS_SQL} AND ${it.sql}
@@ -97,6 +135,7 @@ export interface YearRevenue {
 export function getScopedRevenueByYear(scope: AnalyticsScope): YearRevenue[] {
   if (scope.allDepartments) {
     return query<YearRevenue>(
+      scope,
       `SELECT substr(${POSTED_DATE_SQL},1,4) AS year,
               ROUND(SUM(h.TotalInvoice),2) AS revenue,
               COUNT(*) AS invoices
@@ -106,6 +145,7 @@ export function getScopedRevenueByYear(scope: AnalyticsScope): YearRevenue[] {
   }
   const it = itemTypeClause(scope);
   return query<YearRevenue>(
+    scope,
     `SELECT substr(${POSTED_DATE_SQL},1,4) AS year,
             ROUND(SUM(d.NetExt),2) AS revenue,
             COUNT(DISTINCT d.InvoiceDocId) AS invoices
@@ -130,6 +170,7 @@ export function getScopedRevenueByMonth(
   const yr = year.replace(/[^0-9]/g, "").slice(0, 4);
   if (scope.allDepartments) {
     return query<MonthRevenue>(
+      scope,
       `SELECT substr(${POSTED_DATE_SQL},1,7) AS month,
               ROUND(SUM(h.TotalInvoice),2) AS revenue,
               COUNT(*) AS invoices
@@ -141,6 +182,7 @@ export function getScopedRevenueByMonth(
   }
   const it = itemTypeClause(scope);
   return query<MonthRevenue>(
+    scope,
     `SELECT substr(${POSTED_DATE_SQL},1,7) AS month,
             ROUND(SUM(d.NetExt),2) AS revenue,
             COUNT(DISTINCT d.InvoiceDocId) AS invoices
@@ -157,8 +199,9 @@ export interface DepartmentRevenue {
 }
 
 /** Revenue split across the three departments (cross-department users only). */
-export function getRevenueByDepartment(): DepartmentRevenue[] {
+export function getRevenueByDepartment(scope: AnalyticsScope): DepartmentRevenue[] {
   const rows = query<{ department: string; revenue: number }>(
+    scope,
     `SELECT CASE
               WHEN d.ItemType IN ('UN','TR','RU','RE') THEN 'Sales'
               WHEN d.ItemType = 'PA' THEN 'Parts'
@@ -183,8 +226,9 @@ export interface PartsProfit {
 }
 
 /** Parts revenue/cost/margin — only call when cost/margin are permitted. */
-export function getPartsProfit(): PartsProfit {
+export function getPartsProfit(scope: AnalyticsScope): PartsProfit {
   const row = query<{ rev: number; cost: number }>(
+    scope,
     `SELECT ROUND(SUM(sp.NetExt),2) AS rev,
             ROUND(SUM(sp.Qty * COALESCE(sp.AvgCost,0)),2) AS cost
      FROM SalePart sp
@@ -203,8 +247,9 @@ export interface InventorySnapshot {
   costValue: number;
 }
 
-export function getInventorySnapshot(): InventorySnapshot {
+export function getInventorySnapshot(scope: AnalyticsScope): InventorySnapshot {
   const row = query<{ units: number; retail: number; cost: number }>(
+    scope,
     `SELECT COUNT(*) AS units, ROUND(SUM(BaseRetail),2) AS retail, ROUND(SUM(BaseCost),2) AS cost
      FROM UnitBase WHERE TRIM(StockStatus) = 'instock'`,
   )[0];
@@ -220,9 +265,10 @@ export interface ServiceStats {
   technicianLaborHours: number | null;
 }
 
-export function getServiceStats(includeTech: boolean): ServiceStats {
+export function getServiceStats(scope: AnalyticsScope, includeTech: boolean): ServiceStats {
   const openWorkOrders =
     queryScalar<number>(
+      scope,
       `SELECT COUNT(*) FROM InvoiceHeader h
        WHERE h.InvoiceType = 'wo' AND h.Status NOT IN ('finalized','archived','voided')`,
     ) ?? 0;
@@ -230,6 +276,7 @@ export function getServiceStats(includeTech: boolean): ServiceStats {
   if (includeTech) {
     technicianLaborHours =
       queryScalar<number>(
+        scope,
         `SELECT ROUND(SUM(ElapsedHours),1) FROM WorkInProgress WHERE IsActive = 1`,
       ) ?? 0;
   }
@@ -241,6 +288,7 @@ export function getPaymentsTotal(scope: AnalyticsScope): number {
   if (scope.allDepartments) {
     return (
       queryScalar<number>(
+        scope,
         `SELECT ROUND(SUM(p.Amount),2) FROM Payment p`,
       ) ?? 0
     );
@@ -248,6 +296,7 @@ export function getPaymentsTotal(scope: AnalyticsScope): number {
   const it = itemTypeClause(scope);
   return (
     queryScalar<number>(
+      scope,
       `SELECT ROUND(SUM(p.Amount),2) FROM Payment p
        WHERE p.InvoiceDocId IN (
          SELECT DISTINCT d.InvoiceDocId FROM InvoiceDetail d WHERE ${it.sql}
@@ -275,6 +324,7 @@ export function getTopCustomers(
   let rows: { customerId: number; name: string | null; revenue: number }[];
   if (scope.allDepartments) {
     rows = query(
+      scope,
       `SELECT h.CustomerId AS customerId,
               c.CustomerName AS name,
               ROUND(SUM(h.TotalInvoice),2) AS revenue
@@ -286,6 +336,7 @@ export function getTopCustomers(
   } else {
     const it = itemTypeClause(scope);
     rows = query(
+      scope,
       `SELECT h.CustomerId AS customerId,
               c.CustomerName AS name,
               ROUND(SUM(d.NetExt),2) AS revenue

@@ -4,6 +4,7 @@ import { getAppDb } from "@/lib/db/app";
 import { hashPassword } from "@/lib/auth/password";
 import { audit } from "@/lib/auth/audit";
 import { loadUserById, type AuthUser } from "@/lib/auth/authz";
+import type { AuthContext } from "@/lib/tenant/context";
 import { getRole, ROLES, PERMISSIONS, ACCOUNT_STATES, type AccountState } from "@/lib/auth/catalog";
 import { PerseusError } from "@/lib/errors";
 
@@ -44,6 +45,45 @@ function assertOutranks(actor: AuthUser, targetRoleKey: string | null): void {
   }
 }
 
+function isPlatformAdmin(actor: AuthUser): boolean {
+  return actor.permissions.has("platform.admin");
+}
+
+/** Customer admins are limited to their active org; platform admins are not. */
+function actorOrganizationId(actor: AuthUser): number | null {
+  const ctx = actor as AuthContext;
+  if (ctx.isViewingAs && typeof ctx.activeOrganizationId === "number") {
+    return ctx.activeOrganizationId;
+  }
+  if (isPlatformAdmin(actor)) return null;
+  const orgId = ctx.activeOrganizationId;
+  return typeof orgId === "number" ? orgId : null;
+}
+
+function assertSameOrganization(actor: AuthUser, targetUserId: number): void {
+  const orgId = actorOrganizationId(actor);
+  if (orgId == null) return;
+  const row = getAppDb()
+    .prepare(
+      `SELECT 1 FROM user_organization_memberships
+       WHERE user_id = ? AND organization_id = ? AND status != 'removed'`,
+    )
+    .get(targetUserId, orgId);
+  if (!row) {
+    throw new PerseusError("FORBIDDEN", "That user is not in your organization.");
+  }
+}
+
+function orgMemberClause(actor: AuthUser): { sql: string; params: number[] } {
+  const orgId = actorOrganizationId(actor);
+  if (orgId == null) return { sql: "1=1", params: [] };
+  return {
+    sql: `u.id IN (SELECT m.user_id FROM user_organization_memberships m
+                   WHERE m.organization_id = ? AND m.status != 'removed')`,
+    params: [orgId],
+  };
+}
+
 function assertCanAssignRole(actor: AuthUser, roleKey: string): void {
   const role = getRole(roleKey);
   if (!role) throw new PerseusError("VALIDATION", "Unknown role.");
@@ -77,9 +117,12 @@ export interface UserFilter {
   role?: string;
 }
 
-export function listUsers(filter: UserFilter = {}): UserListRow[] {
+export function listUsers(actor: AuthUser, filter: UserFilter = {}): UserListRow[] {
   const where: string[] = [];
-  const params: string[] = [];
+  const params: Array<string | number> = [];
+  const org = orgMemberClause(actor);
+  where.push(org.sql);
+  params.push(...org.params);
   if (filter.search) {
     where.push(
       "(u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)",
@@ -100,7 +143,7 @@ export function listUsers(filter: UserFilter = {}): UserListRow[] {
            u.location_name, u.last_login_at, u.locked_until,
            r.key AS role_key, r.name AS role_name
     FROM users u LEFT JOIN roles r ON r.id = u.role_id
-    ${where.length ? "WHERE " + where.join(" AND ") : ""}
+    WHERE ${where.join(" AND ")}
     ORDER BY r.hierarchy_level DESC, u.last_name, u.first_name
     LIMIT 500`;
   return getAppDb().prepare(sql).all(...params) as unknown as UserListRow[];
@@ -111,10 +154,13 @@ export interface UserCounts {
   byStatus: Record<string, number>;
 }
 
-export function getUserCounts(): UserCounts {
+export function getUserCounts(actor: AuthUser): UserCounts {
+  const org = orgMemberClause(actor);
   const rows = getAppDb()
-    .prepare("SELECT status, COUNT(*) c FROM users GROUP BY status")
-    .all() as { status: string; c: number }[];
+    .prepare(
+      `SELECT u.status, COUNT(*) c FROM users u WHERE ${org.sql} GROUP BY u.status`,
+    )
+    .all(...org.params) as { status: string; c: number }[];
   const byStatus: Record<string, number> = {};
   let total = 0;
   for (const r of rows) {
@@ -125,7 +171,8 @@ export function getUserCounts(): UserCounts {
 }
 
 /** Full detail for one user: their resolved auth plus raw override rows. */
-export function getUserDetail(userId: number) {
+export function getUserDetail(actor: AuthUser, userId: number) {
+  assertSameOrganization(actor, userId);
   const auth = loadUserById(userId);
   if (!auth) throw new PerseusError("NOT_FOUND", "User not found.");
   const overrides = getAppDb()
@@ -159,15 +206,36 @@ export interface AccessRequestRow {
   decision_note: string | null;
 }
 
-export function listAccessRequests(status?: string): AccessRequestRow[] {
+export function listAccessRequests(actor: AuthUser, status?: string): AccessRequestRow[] {
+  const orgId = actorOrganizationId(actor);
+  const orgName = (actor as AuthContext).activeOrganizationName;
+  const db = getAppDb();
+  if (orgId != null && orgName) {
+    const sql = status
+      ? "SELECT * FROM access_requests WHERE status = ? AND dealership = ? ORDER BY created_at DESC"
+      : "SELECT * FROM access_requests WHERE dealership = ? ORDER BY created_at DESC";
+    return (
+      status ? db.prepare(sql).all(status, orgName) : db.prepare(sql).all(orgName)
+    ) as unknown as AccessRequestRow[];
+  }
   const sql = status
     ? "SELECT * FROM access_requests WHERE status = ? ORDER BY created_at DESC"
     : "SELECT * FROM access_requests ORDER BY created_at DESC";
-  const db = getAppDb();
   return (status ? db.prepare(sql).all(status) : db.prepare(sql).all()) as unknown as AccessRequestRow[];
 }
 
-export function countPendingRequests(): number {
+export function countPendingRequests(actor: AuthUser): number {
+  const orgId = actorOrganizationId(actor);
+  const orgName = (actor as AuthContext).activeOrganizationName;
+  if (orgId != null && orgName) {
+    return (
+      getAppDb()
+        .prepare(
+          "SELECT COUNT(*) c FROM access_requests WHERE status = 'pending' AND dealership = ?",
+        )
+        .get(orgName) as { c: number }
+    ).c;
+  }
   return (
     getAppDb()
       .prepare("SELECT COUNT(*) c FROM access_requests WHERE status = 'pending'")
@@ -187,7 +255,20 @@ export interface AuditRow {
   created_at: string;
 }
 
-export function listAudit(limit = 200): AuditRow[] {
+export function listAudit(actor: AuthUser, limit = 200): AuditRow[] {
+  const orgId = actorOrganizationId(actor);
+  if (orgId != null) {
+    return getAppDb()
+      .prepare(
+        `SELECT a.* FROM audit_log a
+         WHERE a.actor_user_id IN (
+           SELECT m.user_id FROM user_organization_memberships m
+           WHERE m.organization_id = ? AND m.status != 'removed'
+         )
+         ORDER BY a.created_at DESC, a.id DESC LIMIT ?`,
+      )
+      .all(orgId, limit) as unknown as AuditRow[];
+  }
   return getAppDb()
     .prepare(
       `SELECT * FROM audit_log ORDER BY created_at DESC, id DESC LIMIT ?`,
@@ -248,6 +329,23 @@ export function approveAccessRequest(
     req.location_name ?? "Main Location",
     req.dealership,
   );
+  const created = db
+    .prepare("SELECT id FROM users WHERE email = ?")
+    .get(req.email.toLowerCase()) as { id: number } | undefined;
+  const newUserId = created?.id;
+  const orgId =
+    (actor as AuthContext).activeOrganizationId ??
+    (db.prepare("SELECT id FROM organizations WHERE slug='perseus'").get() as
+      | { id: number }
+      | undefined)?.id;
+  if (newUserId && orgId) {
+    db.prepare(
+      `INSERT INTO user_organization_memberships
+         (user_id, organization_id, role_id, status, is_primary)
+       VALUES (?, ?, (SELECT id FROM roles WHERE key = ?), 'active', 1)
+       ON CONFLICT(user_id, organization_id) DO NOTHING`,
+    ).run(newUserId, orgId, opts.roleKey);
+  }
   db.prepare(
     `UPDATE access_requests SET status='approved', decided_by=?, decided_at=datetime('now'), decision_note=? WHERE id=?`,
   ).run(actor.id, opts.note ?? null, requestId);
@@ -300,6 +398,7 @@ function loadTargetRoleKey(userId: number): string | null {
 
 export function assignRole(actor: AuthUser, userId: number, roleKey: string): void {
   assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
   assertOutranks(actor, loadTargetRoleKey(userId));
   assertCanAssignRole(actor, roleKey);
   getAppDb()
@@ -323,6 +422,7 @@ export function setStatus(
   status: AccountState,
 ): void {
   assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
   if (!ACCOUNT_STATES.includes(status))
     throw new PerseusError("VALIDATION", "Invalid status.");
   if (userId === actor.id && status !== "active")
@@ -359,6 +459,7 @@ export function setPermissionOverride(
   value: "grant" | "revoke" | "clear",
 ): void {
   assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
   assertOutranks(actor, loadTargetRoleKey(userId));
   if (!PERMISSIONS.some((p) => p.key === permissionKey))
     throw new PerseusError("VALIDATION", "Unknown permission.");
@@ -396,6 +497,7 @@ export function setDepartment(
   department: string | null,
 ): void {
   assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
   assertOutranks(actor, loadTargetRoleKey(userId));
   getAppDb()
     .prepare("UPDATE users SET department=?, updated_at=datetime('now') WHERE id=?")
@@ -412,6 +514,7 @@ export function setDepartment(
 
 export function resetPassword(actor: AuthUser, userId: number): { tempPassword: string } {
   assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
   assertOutranks(actor, loadTargetRoleKey(userId));
   const temp = genTempPassword();
   const pw = hashPassword(temp);
@@ -430,8 +533,66 @@ export function resetPassword(actor: AuthUser, userId: number): { tempPassword: 
   return { tempPassword: temp };
 }
 
+export function setPassword(actor: AuthUser, userId: number, plain: string): void {
+  assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
+  if (userId === actor.id) {
+    throw new PerseusError("FORBIDDEN", "You cannot set your own password here.");
+  }
+  assertOutranks(actor, loadTargetRoleKey(userId));
+  if (plain.length < 8) {
+    throw new PerseusError("VALIDATION", "Password must be at least 8 characters.");
+  }
+  const pw = hashPassword(plain);
+  const db = getAppDb();
+  db.prepare(
+    "UPDATE users SET password_hash=?, password_salt=?, failed_attempts=0, locked_until=NULL, updated_at=datetime('now') WHERE id=?",
+  ).run(pw.hash, pw.salt, userId);
+  db.prepare(
+    "UPDATE sessions SET revoked_at=datetime('now') WHERE user_id=? AND revoked_at IS NULL",
+  ).run(userId);
+  audit({
+    actorUserId: actor.id,
+    actorLabel: actorLabel(actor),
+    action: "user.password_set",
+    targetType: "user",
+    targetId: userId,
+  });
+}
+
+export function deleteUser(actor: AuthUser, userId: number): void {
+  assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
+  if (userId === actor.id) {
+    throw new PerseusError("FORBIDDEN", "You cannot remove your own account.");
+  }
+  assertOutranks(actor, loadTargetRoleKey(userId));
+  const db = getAppDb();
+  const exists = db.prepare("SELECT id FROM users WHERE id=?").get(userId);
+  if (!exists) throw new PerseusError("NOT_FOUND", "User not found.");
+  // Non-cascade FKs would otherwise block DELETE.
+  db.prepare("UPDATE access_requests SET decided_by=NULL WHERE decided_by=?").run(userId);
+  db.prepare("UPDATE ip_rules SET created_by=NULL WHERE created_by=?").run(userId);
+  db.prepare("UPDATE audit_log SET actor_user_id=NULL WHERE actor_user_id=?").run(userId);
+  db.prepare("UPDATE report_runs SET triggered_by=NULL WHERE triggered_by=?").run(userId);
+  db.prepare("UPDATE organization_invitations SET invited_by=NULL WHERE invited_by=?").run(userId);
+  db.prepare(
+    `UPDATE login_events SET user_id=NULL, session_id=NULL
+      WHERE user_id=? OR session_id IN (SELECT id FROM sessions WHERE user_id=?)`,
+  ).run(userId, userId);
+  db.prepare("DELETE FROM users WHERE id=?").run(userId);
+  audit({
+    actorUserId: actor.id,
+    actorLabel: actorLabel(actor),
+    action: "user.deleted",
+    targetType: "user",
+    targetId: userId,
+  });
+}
+
 export function forceLogout(actor: AuthUser, userId: number): number {
   assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
   assertOutranks(actor, loadTargetRoleKey(userId));
   const info = getAppDb()
     .prepare(
@@ -451,6 +612,7 @@ export function forceLogout(actor: AuthUser, userId: number): number {
 
 export function unlockUser(actor: AuthUser, userId: number): void {
   assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
   assertOutranks(actor, loadTargetRoleKey(userId));
   getAppDb()
     .prepare(
@@ -461,6 +623,48 @@ export function unlockUser(actor: AuthUser, userId: number): void {
     actorUserId: actor.id,
     actorLabel: actorLabel(actor),
     action: "user.unlocked",
+    targetType: "user",
+    targetId: userId,
+  });
+}
+
+/** Administratively lock an account (indefinite) and end its sessions. */
+export function lockUser(actor: AuthUser, userId: number): void {
+  assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
+  if (userId === actor.id)
+    throw new PerseusError("FORBIDDEN", "You cannot lock your own account.");
+  assertOutranks(actor, loadTargetRoleKey(userId));
+  // Far-future lock timestamp = held until an admin unlocks.
+  const until = new Date(Date.now() + 100 * 365 * 24 * 3600 * 1000).toISOString();
+  const db = getAppDb();
+  db.prepare(
+    "UPDATE users SET locked_until=?, updated_at=datetime('now') WHERE id=?",
+  ).run(until, userId);
+  db.prepare(
+    "UPDATE sessions SET revoked_at=datetime('now') WHERE user_id=? AND revoked_at IS NULL",
+  ).run(userId);
+  audit({
+    actorUserId: actor.id,
+    actorLabel: actorLabel(actor),
+    action: "user.locked",
+    targetType: "user",
+    targetId: userId,
+  });
+}
+
+/** Reset (disable) a user's MFA enrollment. */
+export function resetMfa(actor: AuthUser, userId: number): void {
+  assertCanManageUsers(actor);
+  assertSameOrganization(actor, userId);
+  assertOutranks(actor, loadTargetRoleKey(userId));
+  getAppDb()
+    .prepare("UPDATE users SET mfa_enabled=0, updated_at=datetime('now') WHERE id=?")
+    .run(userId);
+  audit({
+    actorUserId: actor.id,
+    actorLabel: actorLabel(actor),
+    action: "user.mfa_reset",
     targetType: "user",
     targetId: userId,
   });

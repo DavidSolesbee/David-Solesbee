@@ -1,6 +1,15 @@
 import Link from "next/link";
 import { requireActiveUser } from "@/lib/auth/authz";
 import { PERMISSIONS, type PermissionCategory } from "@/lib/auth/catalog";
+import { readFlash } from "@/lib/admin/flash";
+import { FlashBanner } from "@/components/admin/FlashBanner";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import {
+  confirmMfaEnrollAction,
+  disableMfaAction,
+  startMfaEnrollAction,
+} from "./actions";
 import {
   Card,
   CardContent,
@@ -21,6 +30,7 @@ const CATEGORY_LABEL: Record<PermissionCategory, string> = {
 
 export default async function AccountPage() {
   const user = await requireActiveUser();
+  const flash = await readFlash();
 
   const byCategory = (Object.keys(CATEGORY_LABEL) as PermissionCategory[]).map(
     (cat) => ({
@@ -49,6 +59,47 @@ export default async function AccountPage() {
           your role, permissions, department, and location.
         </p>
       </div>
+
+      <FlashBanner flash={flash} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Multi-factor authentication</CardTitle>
+          <CardDescription>
+            A session is not created at login until MFA succeeds when this is
+            enabled, or when an organization you belong to requires it.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <StatusBadge intent={user.mfaEnabled ? "positive" : "attention"} dot={false}>
+            {user.mfaEnabled ? "MFA enabled" : "MFA not enabled"}
+          </StatusBadge>
+          {user.mfaEnabled ? (
+            <form action={disableMfaAction}>
+              <Button type="submit" variant="secondary" size="sm">
+                Disable MFA
+              </Button>
+            </form>
+          ) : (
+            <div className="flex flex-wrap items-end gap-3">
+              <form action={startMfaEnrollAction}>
+                <Button type="submit" variant="secondary" size="sm">
+                  Generate authenticator key
+                </Button>
+              </form>
+              <form action={confirmMfaEnrollAction} className="flex items-end gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-caption text-ink-soft">Code</span>
+                  <Input name="code" inputMode="numeric" placeholder="123456" />
+                </label>
+                <Button type="submit" size="sm">
+                  Confirm
+                </Button>
+              </form>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-5">

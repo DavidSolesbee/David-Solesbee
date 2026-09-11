@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getActiveContext } from "@/lib/tenant/context";
 import {
   getUserCounts,
   countPendingRequests,
@@ -20,10 +22,12 @@ function timeAgo(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export default function AdminOverview() {
-  const counts = getUserCounts();
-  const pending = countPendingRequests();
-  const recent = listAudit(8);
+export default async function AdminOverview() {
+  const actor = await getActiveContext();
+  if (!actor) redirect("/login");
+  const counts = getUserCounts(actor);
+  const pending = countPendingRequests(actor);
+  const recent = listAudit(actor, 8);
 
   return (
     <div className="space-y-6">

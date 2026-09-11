@@ -35,6 +35,15 @@ export interface AnalyticsScope {
   allLocations: boolean;
   locationId: number | null;
 
+  /** Tenant context (Auth v2, Phase B). The validated tenant whose data source
+   * this scope may read, and the organization it belongs to. Null when the
+   * caller pre-dates tenant context (e.g. a global-role AuthUser). */
+  userId: number;
+  tenantId: string | null;
+  organizationId: number | null;
+  /** Platform-admin View-As: tenant is inspected without membership. */
+  platformViewAs: boolean;
+
   /** Feature gates — whether a measure may EVER be computed/returned. */
   canViewRevenue: boolean;
   canViewCost: boolean;
@@ -45,6 +54,14 @@ export interface AnalyticsScope {
   canExport: boolean;
 }
 
+/** Optional tenant fields present when the caller is a full AuthContext. */
+type MaybeTenantAware = AuthUser & {
+  activeTenantId?: string;
+  activeOrganizationId?: number;
+  isViewingAs?: boolean;
+  isPlatformAdmin?: boolean;
+};
+
 export function resolveScope(user: AuthUser): AnalyticsScope {
   const allDepartments = user.scope.allDepartments;
   const department = allDepartments ? null : user.department;
@@ -53,12 +70,18 @@ export function resolveScope(user: AuthUser): AnalyticsScope {
       ? null
       : (DEPARTMENT_ITEM_TYPES[department] ?? null);
 
+  const ctx = user as MaybeTenantAware;
+
   return {
     allDepartments,
     department,
     itemTypes,
     allLocations: user.scope.allLocations,
     locationId: user.scope.allLocations ? null : user.locationId,
+    userId: user.id,
+    tenantId: ctx.activeTenantId ?? null,
+    organizationId: ctx.activeOrganizationId ?? null,
+    platformViewAs: ctx.isViewingAs === true && ctx.isPlatformAdmin === true,
     canViewRevenue: user.permissions.has("feature.view_revenue"),
     canViewCost: user.permissions.has("feature.view_cost"),
     canViewMargin: user.permissions.has("feature.view_margin"),

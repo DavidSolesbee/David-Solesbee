@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth/authz";
+import { getActiveContext } from "@/lib/tenant/context";
 import { getUserDetail, assignableRoles } from "@/lib/admin/service";
 import {
   PERMISSIONS,
@@ -17,14 +17,17 @@ import {
   CardDescription,
 } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Select } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { AccountStatusBadge } from "@/components/admin/AccountStatusBadge";
+import { ConfirmSubmit } from "@/components/admin/ConfirmSubmit";
 import {
   assignRoleAction,
   setStatusAction,
   setOverrideAction,
   setDepartmentAction,
   resetPasswordAction,
+  setPasswordAction,
+  deleteUserAction,
   forceLogoutAction,
   unlockAction,
 } from "../../actions";
@@ -42,7 +45,7 @@ const STATUS_ACTIONS: { status: AccountState; label: string; variant: "primary" 
   { status: "active", label: "Activate", variant: "primary" },
   { status: "suspended", label: "Suspend", variant: "secondary" },
   { status: "revoked", label: "Revoke", variant: "danger" },
-  { status: "expired", label: "Expire", variant: "secondary" },
+  { status: "expired", label: "Deactivate", variant: "secondary" },
 ];
 
 export default async function UserDetailPage({
@@ -54,10 +57,10 @@ export default async function UserDetailPage({
   const userId = Number(id);
   if (!Number.isFinite(userId)) notFound();
 
-  const actor = (await getCurrentUser())!;
+  const actor = (await getActiveContext())!;
   let detail;
   try {
-    detail = getUserDetail(userId);
+    detail = getUserDetail(actor, userId);
   } catch {
     notFound();
   }
@@ -212,6 +215,38 @@ export default async function UserDetailPage({
               </div>
             </div>
 
+            <form action={setPasswordAction} className="space-y-3 border-t border-line pt-4">
+              <input type="hidden" name="userId" value={auth.id} />
+              <div className="text-caption font-medium text-ink-soft">Set password</div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-caption text-ink-faint">New password</span>
+                  <Input
+                    type="password"
+                    name="password"
+                    minLength={8}
+                    required
+                    autoComplete="new-password"
+                    disabled={!canManage || isSelf}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-caption text-ink-faint">Confirm</span>
+                  <Input
+                    type="password"
+                    name="confirm"
+                    minLength={8}
+                    required
+                    autoComplete="new-password"
+                    disabled={!canManage || isSelf}
+                  />
+                </label>
+              </div>
+              <Button type="submit" size="sm" variant="secondary" disabled={!canManage || isSelf}>
+                Set password
+              </Button>
+            </form>
+
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
               <form action={resetPasswordAction}>
                 <input type="hidden" name="userId" value={auth.id} />
@@ -235,6 +270,17 @@ export default async function UserDetailPage({
                 <Button type="submit" size="sm" variant="secondary" disabled={!canManage}>
                   Unlock
                 </Button>
+              </form>
+              <form action={deleteUserAction}>
+                <input type="hidden" name="userId" value={auth.id} />
+                <ConfirmSubmit
+                  variant="danger"
+                  size="sm"
+                  confirm="Permanently remove this user? Their sessions and memberships will be deleted."
+                  disabled={!canManage || isSelf}
+                >
+                  Remove
+                </ConfirmSubmit>
               </form>
             </div>
           </CardContent>

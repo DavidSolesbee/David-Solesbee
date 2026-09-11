@@ -25,14 +25,16 @@ export interface CreateSessionInput {
   userAgent?: string | null;
 }
 
-/** Create a session row and set the httpOnly cookie. Returns the raw token. */
-export async function createSession(input: CreateSessionInput): Promise<string> {
+/** Create a session row and set the httpOnly cookie. Returns token + row id. */
+export async function createSession(
+  input: CreateSessionInput,
+): Promise<{ token: string; id: number }> {
   const token = randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + SESSION_TTL_HOURS * 3600 * 1000);
-  getAppDb()
+  const info = getAppDb()
     .prepare(
-      `INSERT INTO sessions (token_hash, user_id, expires_at, ip, user_agent)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO sessions (token_hash, user_id, expires_at, ip, user_agent, last_activity_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
     )
     .run(hashToken(token), input.userId, expires.toISOString(), input.ip ?? null, input.userAgent ?? null);
 
@@ -44,7 +46,7 @@ export async function createSession(input: CreateSessionInput): Promise<string> 
     path: "/",
     expires,
   });
-  return token;
+  return { token, id: Number(info.lastInsertRowid) };
 }
 
 export interface SessionRow {
@@ -52,6 +54,11 @@ export interface SessionRow {
   user_id: number;
   expires_at: string;
   revoked_at: string | null;
+  /** Auth v2 (Phase B): the tenant context this session is acting in. */
+  active_organization_id: number | null;
+  active_tenant_id: string | null;
+  active_role_id: number | null;
+  viewing_as_organization_id: number | null;
 }
 
 /** Resolve the current valid session row from the cookie, or null. */
@@ -62,7 +69,10 @@ export async function getSessionFromCookie(): Promise<SessionRow | null> {
 
   const row = getAppDb()
     .prepare(
-      `SELECT id, user_id, expires_at, revoked_at FROM sessions WHERE token_hash = ?`,
+      `SELECT id, user_id, expires_at, revoked_at,
+              active_organization_id, active_tenant_id, active_role_id,
+              viewing_as_organization_id
+       FROM sessions WHERE token_hash = ?`,
     )
     .get(hashToken(token)) as SessionRow | undefined;
 
@@ -75,6 +85,36 @@ export async function getSessionFromCookie(): Promise<SessionRow | null> {
     .prepare(`UPDATE sessions SET last_seen_at = datetime('now') WHERE id = ?`)
     .run(row.id);
   return row;
+}
+
+/**
+ * Bind an active tenant context to a session. The caller MUST have already
+ * validated the membership server-side (see `establishTenantContext`); this is
+ * a low-level persistence primitive and performs no authorization itself.
+ */
+export function setSessionActiveOrg(
+  sessionId: number,
+  organizationId: number,
+  tenantId: string,
+  roleId: number | null,
+): void {
+  getAppDb()
+    .prepare(
+      `UPDATE sessions
+         SET active_organization_id = ?, active_tenant_id = ?, active_role_id = ?
+       WHERE id = ?`,
+    )
+    .run(organizationId, tenantId, roleId, sessionId);
+}
+
+/** Persist or clear platform-admin View-As. Performs no authorization itself. */
+export function setSessionViewAs(
+  sessionId: number,
+  organizationId: number | null,
+): void {
+  getAppDb()
+    .prepare(`UPDATE sessions SET viewing_as_organization_id = ? WHERE id = ?`)
+    .run(organizationId, sessionId);
 }
 
 /** Destroy the current session (logout). */

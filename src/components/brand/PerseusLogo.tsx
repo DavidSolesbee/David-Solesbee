@@ -16,12 +16,12 @@ import { clsx } from "clsx";
 
 type Tone = "color" | "mono" | "inverse";
 
-// Faithful to the brand image: a sage front peak, a deep charcoal-green back
-// peak, and a warm gold north star cresting the summit.
+// Aligned to the Solesbee lockup: navy back peak, electric-blue front peak,
+// silver star.
 const PALETTE: Record<Tone, { back: string; front: string; star: string }> = {
-  color: { back: "#26302A", front: "#7C9A73", star: "#C99A3B" },
-  mono: { back: "#2B2A28", front: "#6B6863", star: "#2B2A28" },
-  inverse: { back: "#DFE8DC", front: "#FFFFFF", star: "#E9C58A" },
+  color: { back: "#0B1F44", front: "#1E6BFF", star: "#A8B2C1" },
+  mono: { back: "#0B1F44", front: "#5B6578", star: "#0B1F44" },
+  inverse: { back: "#8FB6FF", front: "#FFFFFF", star: "#C5CCD6" },
 };
 
 export interface PerseusMarkProps extends React.SVGProps<SVGSVGElement> {
@@ -71,7 +71,7 @@ export function PerseusMark({
 export interface PerseusLogoProps {
   size?: number;
   tone?: Tone;
-  /** Show the "Equipment Intelligence" descriptor under the wordmark. */
+  /** Show the "Equipment" descriptor under the wordmark. */
   showDescriptor?: boolean;
   className?: string;
 }
@@ -103,7 +103,7 @@ export function PerseusLogo({
             className={clsx("mt-1 tracking-[0.28em] uppercase", descColor)}
             style={{ fontSize: size * 0.22 }}
           >
-            Equipment Intelligence
+            Equipment
           </span>
         )}
       </span>

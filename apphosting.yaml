@@ -21,8 +21,20 @@ runConfig:
   minInstances: 0
   maxInstances: 2
   concurrency: 80
-  cpu: 1
-  memoryMiB: 512
+  cpu: 2
+  memoryMiB: 4096
 
-# Environment variables / secrets are added here when we wire production config.
-env: []
+# Dealership SQLite is fetched from the GitHub Release at build time
+# (see scripts/fetch-dealership-db.mjs). The writable app store is created
+# on the instance at runtime.
+env:
+  - variable: PERSEUS_DEALERSHIP_DB
+    value: perseus_equipment_database.db
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: PERSEUS_DEALERSHIP_DB_URL
+    value: https://github.com/DavidSolesbee/David-Solesbee/releases/download/dealership-data/perseus_equipment_database.db
+    availability:
+      - BUILD
+

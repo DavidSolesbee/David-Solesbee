@@ -6,6 +6,9 @@ import { createSession, destroyCurrentSession } from "@/lib/auth/session";
 import { audit } from "@/lib/auth/audit";
 import { accountStateMessage, type AuthUser } from "@/lib/auth/authz";
 import type { AccountState } from "@/lib/auth/catalog";
+import { recordLoginEvent, isIpBlocked, buildDeviceContext } from "@/lib/security/events";
+import { establishTenantContext } from "@/lib/tenant/context";
+import { loginNeedsMfaChallenge, startMfaChallenge } from "@/lib/auth/mfa";
 
 /**
  * Authentication service: login, logout, request access, password reset.
@@ -20,13 +23,15 @@ const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
 
 export type LoginResult =
-  | { ok: true; userId: number }
+  | { ok: true; mfaRequired: true; enrolled: boolean }
+  | { ok: true; mfaRequired?: false; userId: number; organizationCount: number }
   | { ok: false; code: LoginFailureCode; message: string };
 
 export type LoginFailureCode =
   | "INVALID_CREDENTIALS"
   | "LOCKED"
-  | "NOT_ACTIVE";
+  | "NOT_ACTIVE"
+  | "IP_BLOCKED";
 
 interface LoginUserRow {
   id: number;
@@ -35,6 +40,8 @@ interface LoginUserRow {
   status: AccountState;
   failed_attempts: number;
   locked_until: string | null;
+  dealership: string | null;
+  mfa_enabled: number;
 }
 
 export async function login(
@@ -44,21 +51,40 @@ export async function login(
 ): Promise<LoginResult> {
   const email = emailRaw.trim().toLowerCase();
   const db = getAppDb();
+
+  // Server-side IP blocklist enforcement (runs before credential checks).
+  if (isIpBlocked(ctx?.ip, db)) {
+    recordLoginEvent(
+      { userId: null, email, success: false, failureReason: "ip_blocked", ip: ctx?.ip, userAgent: ctx?.userAgent },
+      db,
+    );
+    audit({ action: "login.blocked", targetType: "email", targetId: email, detail: { reason: "ip_blocked" }, ip: ctx?.ip });
+    return { ok: false, code: "IP_BLOCKED", message: "Sign-in from your network has been blocked. Contact your administrator." };
+  }
+
   const user = db
     .prepare(
-      `SELECT id, password_hash, password_salt, status, failed_attempts, locked_until
+      `SELECT id, password_hash, password_salt, status, failed_attempts, locked_until, dealership, mfa_enabled
        FROM users WHERE email = ?`,
     )
     .get(email) as LoginUserRow | undefined;
 
   // Uniform failure for unknown email (avoid user enumeration).
   if (!user) {
+    recordLoginEvent(
+      { userId: null, email, success: false, failureReason: "unknown_email", ip: ctx?.ip, userAgent: ctx?.userAgent },
+      db,
+    );
     audit({ action: "login.failed", targetType: "email", targetId: email, detail: { reason: "unknown_email" }, ip: ctx?.ip });
     return { ok: false, code: "INVALID_CREDENTIALS", message: "Incorrect email or password." };
   }
 
   // Lockout check
   if (user.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
+    recordLoginEvent(
+      { userId: user.id, email, organization: user.dealership, success: false, failureReason: "locked", ip: ctx?.ip, userAgent: ctx?.userAgent, lockedOut: true },
+      db,
+    );
     audit({ actorUserId: user.id, action: "login.locked", targetType: "user", targetId: user.id, ip: ctx?.ip });
     return { ok: false, code: "LOCKED", message: `Too many attempts. Try again in ${LOCKOUT_MINUTES} minutes.` };
   }
@@ -66,32 +92,78 @@ export async function login(
   const valid = verifyPassword(password, { hash: user.password_hash, salt: user.password_salt });
   if (!valid) {
     const attempts = user.failed_attempts + 1;
-    const lockUntil =
-      attempts >= MAX_FAILED_ATTEMPTS
-        ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString()
-        : null;
+    const lockedOut = attempts >= MAX_FAILED_ATTEMPTS;
+    const lockUntil = lockedOut
+      ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000).toISOString()
+      : null;
     db.prepare(
       `UPDATE users SET failed_attempts = ?, locked_until = ?, updated_at = datetime('now') WHERE id = ?`,
     ).run(attempts, lockUntil, user.id);
+    recordLoginEvent(
+      { userId: user.id, email, organization: user.dealership, success: false, failureReason: "invalid_credentials", ip: ctx?.ip, userAgent: ctx?.userAgent, lockedOut },
+      db,
+    );
     audit({ actorUserId: user.id, action: "login.failed", targetType: "user", targetId: user.id, detail: { attempts }, ip: ctx?.ip });
     return { ok: false, code: "INVALID_CREDENTIALS", message: "Incorrect email or password." };
   }
 
   // Password OK — enforce account state (only active may enter).
   if (user.status !== "active") {
+    recordLoginEvent(
+      { userId: user.id, email, organization: user.dealership, success: false, failureReason: `not_active:${user.status}`, ip: ctx?.ip, userAgent: ctx?.userAgent },
+      db,
+    );
     audit({ actorUserId: user.id, action: "login.blocked", targetType: "user", targetId: user.id, detail: { status: user.status }, ip: ctx?.ip });
     return { ok: false, code: "NOT_ACTIVE", message: accountStateMessage(user.status) };
   }
 
-  // (MFA challenge would be inserted here in a future milestone.)
+  if (loginNeedsMfaChallenge(user.id, user.mfa_enabled === 1)) {
+    await startMfaChallenge(user.id);
+    audit({
+      actorUserId: user.id,
+      action: "login.mfa_challenge",
+      targetType: "user",
+      targetId: user.id,
+      ip: ctx?.ip,
+    });
+    return { ok: true, mfaRequired: true, enrolled: user.mfa_enabled === 1 };
+  }
 
-  // Reset failure counters, stamp last login, create session.
+  return completeAuthenticatedLogin(user.id, email, user.dealership, ctx, user.mfa_enabled === 1 ? "enabled" : "disabled");
+}
+
+/** Finish login after password (and MFA, when required). Creates the session. */
+export async function completeAuthenticatedLogin(
+  userId: number,
+  email: string,
+  dealership: string | null,
+  ctx?: { ip?: string | null; userAgent?: string | null },
+  mfaStatus = "disabled",
+): Promise<{ ok: true; mfaRequired?: false; userId: number; organizationCount: number }> {
+  const db = getAppDb();
   db.prepare(
     `UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-  ).run(user.id);
-  await createSession({ userId: user.id, ip: ctx?.ip, userAgent: ctx?.userAgent });
-  audit({ actorUserId: user.id, action: "login.success", targetType: "user", targetId: user.id, ip: ctx?.ip });
-  return { ok: true, userId: user.id };
+  ).run(userId);
+  const device = buildDeviceContext(userId, ctx?.userAgent ?? null);
+  const session = await createSession({ userId, ip: ctx?.ip, userAgent: ctx?.userAgent });
+  const tenant = establishTenantContext(session.id, userId);
+  recordLoginEvent(
+    {
+      userId,
+      email,
+      organization: dealership,
+      success: true,
+      ip: ctx?.ip,
+      userAgent: ctx?.userAgent,
+      deviceId: device.deviceId,
+      deviceInfo: device.info,
+      mfaStatus,
+      sessionId: session.id,
+    },
+    db,
+  );
+  audit({ actorUserId: userId, action: "login.success", targetType: "user", targetId: userId, ip: ctx?.ip });
+  return { ok: true, userId, organizationCount: tenant.organizationCount };
 }
 
 export async function logout(user?: AuthUser | null): Promise<void> {

@@ -1,6 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
-import { PerseusLogo } from "@/components/brand/PerseusLogo";
+import { AppBrand } from "@/components/brand/AppBrand";
 import { config } from "@/lib/config";
 import { cn } from "@/lib/utils/cn";
 
@@ -14,10 +14,9 @@ export function AppShell({
   active,
 }: {
   children: React.ReactNode;
-  active?: "home" | "design" | "discovery";
+  active?: "design" | "discovery";
 }) {
   const links: Array<{ href: string; label: string; key: string }> = [
-    { href: "/", label: "Home", key: "home" },
     { href: "/design", label: "Design System", key: "design" },
     { href: "/data-discovery", label: "Data Discovery", key: "discovery" },
   ];
@@ -25,9 +24,7 @@ export function AppShell({
     <div className="min-h-screen bg-canvas">
       <header className="sticky top-0 z-40 border-b border-line bg-canvas/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-content items-center justify-between px-6">
-          <Link href="/" className="flex items-center">
-            <PerseusLogo size={28} />
-          </Link>
+          <AppBrand href="/design" size={28} />
           <nav className="flex items-center gap-1">
             {links.map((l) => (
               <Link

@@ -1,15 +1,9 @@
-<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Solesbee Analytics">
-  <defs>
-    <linearGradient id="g" x1="0" y1="40" x2="40" y2="0">
-      <stop offset="0%" stop-color="#2C61D6"/>
-      <stop offset="100%" stop-color="#5A8BF7"/>
-    </linearGradient>
-  </defs>
-  <rect x="0" y="0" width="40" height="40" rx="10" fill="url(#g)"/>
-  <rect x="9" y="23" width="4.5" height="8" rx="1.4" fill="#FFFFFF" fill-opacity="0.55"/>
-  <rect x="17.75" y="18" width="4.5" height="13" rx="1.4" fill="#FFFFFF" fill-opacity="0.8"/>
-  <rect x="26.5" y="12" width="4.5" height="19" rx="1.4" fill="#FFFFFF"/>
-  <path d="M11 21 L20 16 L28.75 10" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="28.75" cy="10" r="3" fill="#0A0F1C"/>
-  <circle cx="28.75" cy="10" r="1.6" fill="#FFFFFF"/>
+<svg width="40" height="40" viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Solesbee Analytics">
+  <path d="M6 46 L78 6 L98 24 L26 64 Z" fill="#4D8AFF"/>
+  <path d="M26 64 L98 24 L98 52 L26 92 Z" fill="#1E6BFF"/>
+  <path d="M18 86 L38 74 L38 102 L18 114 Z" fill="#C5CCD6"/>
+  <path d="M18 86 L38 74 L48 80 L28 92 Z" fill="#A8B2C1"/>
+  <path d="M44 78 L64 66 L64 108 L44 120 Z" fill="#2B7BFF"/>
+  <path d="M44 78 L64 66 L74 72 L54 84 Z" fill="#4D8AFF"/>
+  <path d="M70 64 L98 52 L98 96 L64 128 L16 156 L16 132 L54 108 L70 98 Z" fill="#0B1F44"/>
 </svg>
